@@ -1,0 +1,82 @@
+// use prisma-next
+
+model User {
+  id        Int        @id @default(autoincrement())
+  email     String     @unique
+  password  String
+  name      String?
+  documents Document[]
+  sessions  Session[]
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+}
+
+
+model DocumentType {
+  id          Int        @id @default(autoincrement())
+  name        String     @unique
+  domain      String
+  description String?
+  jsonSchema  Json
+  documents   Document[]
+  fields      Field[]
+  createdAt   TimestamptzString @default(now())
+  updatedAt   temporal.updatedAtString()
+}
+
+model Document {
+  id             Int @id @default(autoincrement())
+  fileName       String
+  filePath       String
+  mimeType       String
+
+  documentTypeId Int?
+  documentType   DocumentType? @relation(fields: [documentTypeId], references: [id])
+
+  userId         Int
+  user           User @relation(fields: [userId], references: [id])
+
+  status         String @default("PENDING")
+
+  extractedText  String?
+  parseStatus    String @default("PENDING")
+  parseMessage   String?
+
+  draftData      Json?
+
+  generatedJSON  GeneratedJSON?
+
+  createdAt      TimestamptzString @default(now())
+  updatedAt      temporal.updatedAtString()
+}
+
+model Field {
+  id             Int          @id @default(autoincrement())
+  name           String
+  type           String
+  required       Boolean      @default(false)
+  validationRule String?
+  documentTypeId Int
+  documentType   DocumentType @relation(fields: [documentTypeId], references: [id])
+  createdAt      TimestamptzString @default(now())
+  updatedAt      temporal.updatedAtString()
+}
+
+model GeneratedJSON {
+  id         Int        @id @default(autoincrement())
+  data       Json
+  isValid    Boolean    @default(false)
+  documentId Int        @unique
+  document   Document   @relation(fields: [documentId], references: [id])
+  createdAt  TimestamptzString @default(now())
+  updatedAt  temporal.updatedAtString()
+}
+
+model Session {
+  id        String   @id
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  expiresAt TimestamptzString
+  createdAt TimestamptzString @default(now())
+}
+
