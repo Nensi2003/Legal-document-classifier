@@ -31,6 +31,8 @@ import { DocumentList } from "./features/documents/DocumentList";
 import { parseDocument } from "./features/documents/parseApi";
 
 
+ 
+
 function App() {
   const [showRegister, setShowRegister] =
     useState(false);
@@ -47,6 +49,7 @@ function App() {
   const [selectedDocument, setSelectedDocument] =
     useState<Document | null>(null);
 
+ 
 
   // --------------------------------------------------
   // Check authentication
