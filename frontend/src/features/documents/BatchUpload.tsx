@@ -1,27 +1,153 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
-    uploadBatch,
-    type BatchUploadResponse,
+  uploadBatch,
+  getBatch,
+  type BatchUploadResponse,
+  // type BatchDocumentResult,
 } from "./batchApi";
 
 interface BatchUploadProps {
   onComplete: (result: BatchUploadResponse) => void;
   onCancel: () => void;
-  onOpenDocument: (documentId: number) => void;
+  onOpenDraft: (documentId: number) => void;
 }
+
+  const ACTIVE_BATCH_KEY = "activeBatchId";
+
 
 export function BatchUpload({
   onComplete,
   onCancel,
-  onOpenDocument,
+  onOpenDraft,
 }: BatchUploadProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] =
-    useState<BatchUploadResponse | null>(null);
+  useState<BatchUploadResponse | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  // const [batchId, setBatchId] = useState<number | null>(null);
+
+  async function loadBatch(
+  batchId: number
+): Promise<BatchUploadResponse | null> {
+  try {
+    const batch = await getBatch(batchId);
+
+    if (!batch || !batch.batch) {
+  console.error("Invalid batch response:", batch);
+  localStorage.removeItem(ACTIVE_BATCH_KEY);
+  return null;
+}
+
+if (batch.batch.status === "COMPLETED") {
+  localStorage.removeItem(ACTIVE_BATCH_KEY);
+  return null;
+}
+
+    const activeDocuments = batch.documents.filter(
+      (document) => document.status !== "COMPLETED"
+    );
+
+    const batchResult: BatchUploadResponse = {
+      message: "Active batch loaded.",
+      batchId: batch.batch.id,
+      total: batch.documents.length,
+      successful: batch.documents.filter(
+        (document) => document.status !== "FAILED"
+      ).length,
+      failed: batch.documents.filter(
+        (document) => document.status === "FAILED"
+      ).length,
+      results: activeDocuments.map((document) => ({
+        document: {
+          id: document.id,
+          fileName: document.fileName,
+          mimeType: document.mimeType,
+          status: document.status,
+          parseStatus: document.parseStatus,
+        },
+        success: document.status !== "FAILED",
+        status: document.status,
+        fileName: document.fileName,
+      })),
+    };
+
+    return batchResult;
+  } catch (error) {
+    console.error("Failed to load batch:", error);
+    return null;
+  }
+}
+
+
+  useEffect(() => {
+  const savedBatchId =
+    localStorage.getItem(ACTIVE_BATCH_KEY);
+
+  if (!savedBatchId) {
+    return;
+  }
+
+  const id = Number(savedBatchId);
+
+  if (!Number.isInteger(id)) {
+    localStorage.removeItem(ACTIVE_BATCH_KEY);
+    return;
+  }
+
+  async function initializeBatch() {
+    const batchResult = await loadBatch(id);
+
+    setResult(batchResult);
+  }
+
+  initializeBatch();
+}, []);
+
+
+useEffect(() => {
+  async function refreshBatch() {
+    const savedBatchId =
+      localStorage.getItem(ACTIVE_BATCH_KEY);
+
+    if (!savedBatchId) {
+      return;
+    }
+
+    const id = Number(savedBatchId);
+
+    if (!Number.isInteger(id)) {
+      return;
+    }
+
+    const batchResult = await loadBatch(id);
+
+    setResult(batchResult);
+  }
+
+  function handleVisibilityChange() {
+    if (document.visibilityState === "visible") {
+      refreshBatch();
+    }
+  }
+
+  document.addEventListener(
+    "visibilitychange",
+    handleVisibilityChange
+  );
+
+  return () => {
+    document.removeEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
+  };
+}, []);
+
+
+
 
   function addFiles(selectedFiles: File[]) {
     setError("");
@@ -91,32 +217,40 @@ export function BatchUpload({
     }
 
     try {
-      setUploading(true);
-      setError("");
-      setResult(null);
+  setUploading(true);
+  setError("");
+  setResult(null);
 
-      const uploadResult = await uploadBatch(files);
+  const result = await uploadBatch(files);
 
-      setResult(uploadResult);
-      onComplete(uploadResult);
-    } catch (error) {
-      console.error(error);
+  localStorage.setItem(
+    ACTIVE_BATCH_KEY,
+    String(result.batchId)
+  );
 
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Failed to upload documents."
-      );
-    } finally {
-      setUploading(false);
-    }
+  setResult(result);
+
+  onComplete(result);
+} catch (error) {
+  console.error(error);
+
+  setError(
+    error instanceof Error
+      ? error.message
+      : "Failed to upload documents."
+  );
+} finally {
+  setUploading(false);
+}
   }
 
   function handleNewBatch() {
-    setFiles([]);
-    setResult(null);
-    setError("");
-  }
+  setFiles([]);
+  setResult(null);
+  setError("");
+
+  localStorage.removeItem(ACTIVE_BATCH_KEY);
+}
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
@@ -321,7 +455,7 @@ export function BatchUpload({
       ) : (
         <BatchResults
           result={result}
-          onOpenDocument={onOpenDocument}
+          onOpenDraft={onOpenDraft}
           onNewBatch={handleNewBatch}
         />
       )}
@@ -331,13 +465,13 @@ export function BatchUpload({
 
 interface BatchResultsProps {
   result: BatchUploadResponse;
-  onOpenDocument: (documentId: number) => void;
+  onOpenDraft: (documentId: number) => void;
   onNewBatch: () => void;
 }
 
 function BatchResults({
   result,
-  onOpenDocument,
+  onOpenDraft,
   onNewBatch,
 }: BatchResultsProps) {
   return (
@@ -353,11 +487,11 @@ function BatchResults({
 
               <div>
                 <h2 className="text-xl font-bold text-slate-900">
-                  Batch processing complete
+                  Batch ready
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Your documents have finished processing.
+                  Your documents are ready to be processed.
                 </p>
               </div>
             </div>
@@ -373,15 +507,28 @@ function BatchResults({
         </div>
 
         {/* Summary */}
-        <div className="mt-6 grid grid-cols-3 gap-3">
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <SummaryCard
             value={result.total}
             label="Total"
           />
 
           <SummaryCard
-            value={result.successful}
-            label="Successful"
+            value={
+              result.results.filter(
+                (item) => item.status === "READY"
+              ).length
+            }
+            label="Ready"
+          />
+
+          <SummaryCard
+            value={
+              result.results.filter(
+                (item) => item.status === "DRAFT"
+              ).length
+            }
+            label="Draft"
           />
 
           <SummaryCard
@@ -404,86 +551,107 @@ function BatchResults({
         </div>
 
         <div className="divide-y divide-slate-100">
-          {result.results.map((item, index) => {
-            const documentName =
-  item.document?.fileName ?? item.fileName ?? "Unknown document";
+          {result.results
+            .filter((item) => item.status !== "COMPLETED")
+            .map((item, index) => {
+              const documentName =
+                item.document?.fileName ??
+                item.fileName ??
+                "Unknown document";
 
-            return (
-              <div
-                key={
-                  item.document?.id ??
-                  `${item.fileName}-${index}`
-                }
-                className="px-5 py-4 transition hover:bg-slate-50"
-              >
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-                  {/* Document */}
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-lg">
-                      {getFileIcon(documentName)}
-                    </div>
+              return (
+                <div
+                  key={
+                    item.document?.id ??
+                    `${item.fileName}-${index}`
+                  }
+                  className="px-5 py-4 transition hover:bg-slate-50"
+                >
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                    {/* Document */}
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-lg">
+                        {getFileIcon(documentName)}
+                      </div>
 
-                    <div className="min-w-0">
-                      <p
-                        className="truncate text-sm font-medium text-slate-800"
-                        title={documentName}
-                      >
-                        {documentName}
-                      </p>
+                      <div className="min-w-0">
+                        <p
+                          className="truncate text-sm font-medium text-slate-800"
+                          title={documentName}
+                        >
+                          {documentName}
+                        </p>
 
-                      {item.success &&
-                        item.suggestions &&
-                        item.suggestions.length > 0 && (
-                          <p className="mt-1 truncate text-xs text-slate-500">
-                            Suggested:{" "}
-                            {item.suggestions
-                              .map(
-                                (suggestion) =>
-                                  suggestion.documentType
-                              )
-                              .join(", ")}
+                        {item.success &&
+                          item.suggestions &&
+                          item.suggestions.length > 0 && (
+                            <p className="mt-1 truncate text-xs text-slate-500">
+                              Suggested:{" "}
+                              {item.suggestions
+                                .map(
+                                  (suggestion) =>
+                                    suggestion.documentType
+                                )
+                                .join(", ")}
+                            </p>
+                          )}
+
+                        {!item.success && item.error && (
+                          <p className="mt-1 text-xs text-red-500">
+                            {item.error}
                           </p>
                         )}
+                      </div>
+                    </div>
 
-                      {!item.success && item.error && (
-                        <p className="mt-1 text-xs text-red-500">
-                          {item.error}
-                        </p>
+                    {/* Status */}
+                    <div className="shrink-0">
+                      {item.status === "READY" ? (
+                        <span className="inline-flex items-center gap-2 rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700">
+                          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                          Ready
+                        </span>
+                      ) : item.status === "DRAFT" ? (
+                        <span className="inline-flex items-center gap-2 rounded-full bg-yellow-50 px-3 py-1.5 text-xs font-semibold text-yellow-700">
+                          <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
+                          Draft
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-2 rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600">
+                          <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                          {item.status || "Failed"}
+                        </span>
                       )}
                     </div>
-                  </div>
 
-                  {/* Status */}
-                  <div className="shrink-0">
-                    {item.success ? (
-                      <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">
-                        <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
-                        Ready
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-2 rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600">
-                        <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                        {item.status || "Failed"}
-                      </span>
+                    {/* Action */}
+                    {item.status === "READY" && item.document && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onOpenDraft(item.document!.id)
+                        }
+                        className="shrink-0 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                      >
+                        Process document
+                      </button>
+                    )}
+
+                    {item.status === "DRAFT" && item.document && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onOpenDraft(item.document!.id)
+                        }
+                        className="shrink-0 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                      >
+                        Open draft
+                      </button>
                     )}
                   </div>
-
-                  {/* Action */}
-                  {item.success && item.document && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onOpenDocument(item.document!.id)
-                      }
-                      className="shrink-0 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-                    >
-                      Open document
-                    </button>
-                  )}
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
       </div>
     </section>

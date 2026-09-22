@@ -51,28 +51,58 @@ function App() {
   // --------------------------------------------------
   // Check authentication
   // --------------------------------------------------
+   
 
-  useEffect(() => {
-    async function checkAuth() {
-      try {
-        const currentUser =
-          await getCurrentUser();
 
-        setUser(currentUser);
-      } catch (error) {
-        console.error(
-          "Failed to check authentication:",
-          error
+  
+ useEffect(() => {
+  async function checkAuth() {
+    try {
+      const currentUser = await getCurrentUser();
+
+      setUser(currentUser);
+
+      if (currentUser) {
+        const params = new URLSearchParams(
+          window.location.search
         );
 
-        setUser(null);
-      } finally {
-        setCheckingAuth(false);
-      }
-    }
+        const documentIdParam =
+          params.get("documentId");
 
-    checkAuth();
-  }, []);
+        if (documentIdParam) {
+          const documentId = Number(documentIdParam);
+
+          if (Number.isInteger(documentId)) {
+            try {
+              const document =
+                await getDocumentById(documentId);
+
+              setSelectedDocument(document);
+              setCurrentPage("document");
+            } catch (error) {
+              console.error(
+                "Failed to load draft document:",
+                error
+              );
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error(
+        "Failed to check authentication:",
+        error
+      );
+
+      setUser(null);
+    } finally {
+      setCheckingAuth(false);
+    }
+  }
+
+  checkAuth();
+}, []);
 
 
   // --------------------------------------------------
@@ -162,6 +192,13 @@ function App() {
     }
   }
 
+  function handleOpenDraft(documentId: number) {
+  window.open(
+    `${window.location.origin}?documentId=${documentId}`,
+    "_blank"
+  );
+}
+
 
   // --------------------------------------------------
   // Navigation
@@ -240,9 +277,7 @@ function App() {
           onCancel={() =>
             setCurrentPage("dashboard")
           }
-          onOpenDocument={
-            handleOpenDocument
-          }
+          onOpenDraft={handleOpenDraft}
         />
       </AppLayout>
     );

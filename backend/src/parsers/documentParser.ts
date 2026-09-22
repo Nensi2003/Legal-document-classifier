@@ -4,6 +4,7 @@ import { parseDocx } from "./docxParser";
 import { parseCsv } from "./csvParser";
 import { UnsupportedDocumentTypeError } from "./parserErrors";
 import { parseImage } from "./imageParser";
+import { parseDoc } from "./docParser";
 
 export async function parseDocument(
   filePath: string,
@@ -22,6 +23,9 @@ export async function parseDocument(
     case "image/jpeg":
     case "image/png":
       return parseImage(filePath);
+
+      case "application/msword":
+  return parseDoc(filePath);
 
     default:
       throw new UnsupportedDocumentTypeError(mimeType);

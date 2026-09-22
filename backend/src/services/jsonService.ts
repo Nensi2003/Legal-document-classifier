@@ -20,9 +20,7 @@ export async function generateJSON(
   }
 
   if (!document.documentTypeId) {
-    throw new Error(
-      "Document type has not been selected"
-    );
+    throw new Error("Document type has not been selected");
   }
 
   const documentType =
@@ -56,8 +54,10 @@ export async function generateJSON(
       })
       .first();
 
+  let generatedJSON;
+
   if (existingJSON) {
-    const updated =
+    generatedJSON =
       await db.orm.public.GeneratedJSON
         .where({
           documentId,
@@ -66,40 +66,53 @@ export async function generateJSON(
           data,
           isValid: true,
         });
-
-   await db.orm.public.Document
-  .where({
-    id: documentId,
-  })
-  .update({
-    status: "COMPLETED",
-    draftData: null,
-  });
-
-    return {
-      valid: true,
-      generatedJSON: updated,
-    };
+  } else {
+    generatedJSON =
+      await db.orm.public.GeneratedJSON.create({
+        data,
+        isValid: true,
+        documentId,
+      });
   }
-
-  const created =
-    await db.orm.public.GeneratedJSON.create({
-      data,
-      isValid: true,
-      documentId,
-    });
 
   await db.orm.public.Document
     .where({
       id: documentId,
+      userId,
     })
     .update({
       status: "COMPLETED",
-       draftData: null,
+      draftData: null,
     });
+
+  // Check whether this document belongs to a batch.
+  if (document.batchId) {
+    const batchDocuments =
+      await db.orm.public.Document
+        .where({
+          batchId: document.batchId,
+          userId,
+        })
+        .all();
+
+    const allCompleted = batchDocuments.every(
+      (item) => item.status === "COMPLETED"
+    );
+
+    if (allCompleted) {
+      await db.orm.public.Batch
+        .where({
+          id: document.batchId,
+          userId,
+        })
+        .update({
+          status: "COMPLETED",
+        });
+    }
+  }
 
   return {
     valid: true,
-    generatedJSON: created,
+    generatedJSON,
   };
 }

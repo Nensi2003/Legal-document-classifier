@@ -5,7 +5,8 @@ export interface DraftDocument {
   documentTypeId?: number | null;
   status: string;
   parseStatus?: string | null;
-  updatedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export async function getDraftDocuments(): Promise<

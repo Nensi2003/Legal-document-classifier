@@ -1,12 +1,13 @@
 // use prisma-next
 
 model User {
-  id        Int        @id @default(autoincrement())
-  email     String     @unique
+  id        Int     @id @default(autoincrement())
+  email     String  @unique
   password  String
   name      String?
   documents Document[]
   sessions  Session[]
+  batches   Batch[]
   createdAt TimestamptzString @default(now())
   updatedAt temporal.updatedAtString()
 }
@@ -29,23 +30,20 @@ model Document {
   fileName       String
   filePath       String
   mimeType       String
-
   documentTypeId Int?
   documentType   DocumentType? @relation(fields: [documentTypeId], references: [id])
-
   userId         Int
   user           User @relation(fields: [userId], references: [id])
 
-  status         String @default("PENDING")
+  batchId        Int?
+  batch          Batch? @relation(fields: [batchId], references: [id])
 
+  status         String @default("PENDING")
   extractedText  String?
   parseStatus    String @default("PENDING")
   parseMessage   String?
-
   draftData      Json?
-
   generatedJSON  GeneratedJSON?
-
   createdAt      TimestamptzString @default(now())
   updatedAt      temporal.updatedAtString()
 }
@@ -78,5 +76,15 @@ model Session {
   user      User     @relation(fields: [userId], references: [id])
   expiresAt TimestamptzString
   createdAt TimestamptzString @default(now())
+}
+
+model Batch {
+  id        Int        @id @default(autoincrement())
+  userId    Int
+  user      User       @relation(fields: [userId], references: [id])
+  status    String     @default("ACTIVE")
+  documents Document[]
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
 }
 

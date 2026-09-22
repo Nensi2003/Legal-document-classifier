@@ -8,6 +8,8 @@ import sanitizeHtml from "sanitize-html";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/prisma/db";
 
+import { withConvertedDocx } from "@/parsers/docConverter";
+
 interface RouteContext {
   params: Promise<{
     id: string;
@@ -94,79 +96,55 @@ export async function GET(
      * ---------------------------------------------------------
      */
     if (
-      document.mimeType ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    ) {
-      const result =
-        await mammoth.convertToHtml({
+  document.mimeType ===
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+  document.mimeType === "application/msword"
+) {
+  const result =
+    document.mimeType === "application/msword"
+      ? await withConvertedDocx(
+          document.filePath,
+          (docxPath) =>
+            mammoth.convertToHtml({
+              path: docxPath,
+            })
+        )
+      : await mammoth.convertToHtml({
           path: document.filePath,
         });
 
-      /*
-       * Mammoth converts the Word document into HTML.
-       *
-       * Sanitize the generated HTML before sending it
-       * to the frontend.
-       */
-      const html = sanitizeHtml(
-        result.value,
-        {
-          allowedTags: [
-            "p",
-            "br",
-            "strong",
-            "b",
-            "em",
-            "i",
-            "u",
-            "h1",
-            "h2",
-            "h3",
-            "h4",
-            "h5",
-            "h6",
-            "ul",
-            "ol",
-            "li",
-            "table",
-            "thead",
-            "tbody",
-            "tr",
-            "th",
-            "td",
-            "blockquote",
-            "a",
-            "img",
-          ],
+  const html = sanitizeHtml(result.value, {
+    allowedTags: [
+      "p",
+      "br",
+      "strong",
+      "em",
+      "u",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "ul",
+      "ol",
+      "li",
+      "table",
+      "thead",
+      "tbody",
+      "tr",
+      "th",
+      "td",
+    ],
+    allowedAttributes: {
+      "*": ["class"],
+    },
+  });
 
-          allowedAttributes: {
-            a: [
-              "href",
-              "title",
-              "target",
-              "rel",
-            ],
-
-            img: [
-              "src",
-              "alt",
-            ],
-          },
-
-          allowedSchemes: [
-            "http",
-            "https",
-            "mailto",
-          ],
-        }
-      );
-
-      return NextResponse.json({
-        type: "docx",
-        html,
-        messages: result.messages,
-      });
-    }
+  return NextResponse.json({
+    type: "docx",
+    html,
+    messages: result.messages,
+  });
+}
 
 
     /*

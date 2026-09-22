@@ -14,20 +14,25 @@ export async function GET() {
     }
 
     const drafts = await db.orm.public.Document
-      .where({
-        userId: user.id,
-        status: "DRAFT",
-      })
-      .all();
+  .where({
+    userId: user.id,
+    status: "DRAFT",
+  })
+  .all();
 
-    return NextResponse.json({
-      drafts,
-    });
+drafts.sort(
+  (a, b) =>
+    new Date(b.createdAt).getTime() -
+    new Date(a.createdAt).getTime()
+);
+
+return NextResponse.json({
+  drafts,
+});
   } catch (error) {
-    console.error("Error getting drafts:", error);
-
+    console.error("Error fetching drafts:", error);
     return NextResponse.json(
-      { error: "Failed to get drafts" },
+      { error: "Internal Server Error" },
       { status: 500 }
     );
   }

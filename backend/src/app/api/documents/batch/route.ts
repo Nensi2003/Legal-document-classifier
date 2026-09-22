@@ -36,6 +36,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const batch = await db.orm.public.Batch.create({
+  userId: user.id,
+  status: "ACTIVE",
+});
+
     // 2. Get uploaded files
     const formData = await request.formData();
     const files = formData.getAll("files");
@@ -136,13 +141,13 @@ export async function POST(request: NextRequest) {
         );
 
         // 10. Create Document record
-        const document =
-          await createDocument({
-            fileName: file.name,
-            filePath,
-            mimeType: file.type,
-            userId: user.id,
-          });
+        const document = await createDocument({
+  fileName: file.name,
+  filePath,
+  mimeType: file.type,
+  userId: user.id,
+  batchId: batch.id,
+});
 
         // 11. Parse document
         const parsed =
@@ -153,15 +158,16 @@ export async function POST(request: NextRequest) {
 
         // 12. Save extracted text
         await db.orm.public.Document
-          .where({
-            id: document.id,
-            userId: user.id,
-          })
-          .update({
-            extractedText: parsed.text,
-            parseStatus: "SUCCESS",
-            parseMessage: null,
-          });
+  .where({
+    id: document.id,
+    userId: user.id,
+  })
+  .update({
+    extractedText: parsed.text,
+    parseStatus: "SUCCESS",
+    parseMessage: null,
+    status: "READY",
+  });
 
         // 13. Classify document
         const suggestions =
@@ -170,17 +176,18 @@ export async function POST(request: NextRequest) {
           );
 
         results.push({
-          document: {
-            id: document.id,
-            fileName: document.fileName,
-            mimeType: document.mimeType,
-            status: "PENDING",
-            parseStatus: "SUCCESS",
-          },
-          success: true,
-          status: "READY",
-          suggestions,
-        });
+  document: {
+    id: document.id,
+    fileName: document.fileName,
+    mimeType: document.mimeType,
+    status: "READY",
+    parseStatus: "SUCCESS",
+  },
+  success: true,
+  status: "READY",
+  batchId: batch.id,
+  suggestions,
+});
       } catch (error) {
         console.error(
           `Failed to process ${file.name}:`,
@@ -208,10 +215,10 @@ export async function POST(request: NextRequest) {
         (result) => !result.success
       ).length;
 
-    return NextResponse.json(
+     return NextResponse.json(
       {
-        message:
-          "Batch upload completed.",
+        message: "Batch upload completed.",
+        batchId: batch.id,
         total: files.length,
         successful,
         failed,
@@ -220,15 +227,11 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    console.error(
-      "Batch upload error:",
-      error
-    );
+    console.error("Batch upload error:", error);
 
     return NextResponse.json(
       {
-        error:
-          "Something went wrong while processing the batch.",
+        error: "Something went wrong while processing the batch.",
       },
       { status: 500 }
     );

@@ -75,18 +75,24 @@ const [drafts, setDrafts] = useState<DraftDocument[]>([]);  const [loading, setL
   }, []);
 
   const filteredDrafts = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+  const query = searchQuery.trim().toLowerCase();
 
-    if (!query) {
-      return drafts;
-    }
+  const sortedDrafts = [...drafts].sort(
+    (a, b) =>
+      new Date(b.createdAt).getTime() -
+      new Date(a.createdAt).getTime()
+  );
 
-    return drafts.filter((draft) =>
-      draft.fileName
-        .toLowerCase()
-        .includes(query)
-    );
-  }, [drafts, searchQuery]);
+  if (!query) {
+    return sortedDrafts;
+  }
+
+  return sortedDrafts.filter((draft) =>
+    draft.fileName
+      .toLowerCase()
+      .includes(query)
+  );
+}, [drafts, searchQuery]);
 
   if (loading) {
     return (

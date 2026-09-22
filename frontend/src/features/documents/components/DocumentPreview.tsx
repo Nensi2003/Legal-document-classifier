@@ -40,6 +40,7 @@ const [error, setError] = useState<string | null>(null);
 const needsPreviewApi =
   mimeType ===
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+  mimeType === "application/msword" ||
   mimeType === "text/csv";
 
 
@@ -195,10 +196,13 @@ const needsPreviewApi =
    * ---------------------------------------------------------
    */
   if (
+  (
     mimeType ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" &&
-    previewData?.type === "docx"
-  ) {
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    mimeType === "application/msword"
+  ) &&
+  previewData?.type === "docx"
+) {
     return (
       <div className="min-h-[650px] bg-slate-200 p-6">
 
