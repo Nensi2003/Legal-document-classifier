@@ -24,6 +24,11 @@ Tech Stack
 **Infrastructure:** Docker
 
 
+Running the whole Application after dockerizing 
+
+docker compose up --build
+
+
 Running Lockally 
 # Start PostgreSQL
 docker compose up -d
