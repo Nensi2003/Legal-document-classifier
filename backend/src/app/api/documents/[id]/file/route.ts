@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/prisma/db";
 
+import { getStoredFilePath } from "@/lib/fileStorage";
+
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
@@ -45,7 +47,9 @@ export async function GET(
       );
     }
 
-    const file = await readFile(document.filePath);
+    const filePath = getStoredFilePath(document.filePath);
+
+const file = await readFile(filePath);
 
     return new NextResponse(file, {
       status: 200,

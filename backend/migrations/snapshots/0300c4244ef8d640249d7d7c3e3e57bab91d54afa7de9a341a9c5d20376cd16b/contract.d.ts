@@ -33,9 +33,9 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'1582b6dbe0fe48a9231c4a829ecc983934fba2d3fc8c35011835b90dd432ee8c'>;
+  StorageHashBase<'0300c4244ef8d640249d7d7c3e3e57bab91d54afa7de9a341a9c5d20376cd16b'>;
 export type ExecutionHash =
-  ExecutionHashBase<'d8878553a00a8c38e1f9317b79acf4b77d1d7b685b5de30e36ccf3db0daa9dc4'>;
+  ExecutionHashBase<'99498bf8fe47fff9540ae94a8bb485d67f4cf04667f15eb7c4055e7d767526a6'>;
 export type ProfileHash =
   ProfileHashBase<'3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2'>;
 
@@ -277,7 +277,7 @@ export type FieldOutputTypes = {
       readonly draftData: CodecTypes['pg/json@1']['output'] | null;
       readonly generatedJSON: CodecTypes['pg/json@1']['output'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
-      readonly updatedAt: CodecTypes['pg/timestamptz-string@1']['output'];
+      readonly updatedAt: CodecTypes['pg/timestamptz-temporal@1']['output'];
     };
     readonly DocumentType: {
       readonly id: CodecTypes['pg/int4@1']['output'];
@@ -360,7 +360,7 @@ export type FieldInputTypes = {
       readonly draftData: CodecTypes['pg/json@1']['input'] | null;
       readonly generatedJSON: CodecTypes['pg/json@1']['input'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
-      readonly updatedAt: CodecTypes['pg/timestamptz-string@1']['input'];
+      readonly updatedAt: CodecTypes['pg/timestamptz-temporal@1']['input'];
     };
     readonly DocumentType: {
       readonly id: CodecTypes['pg/int4@1']['input'];
@@ -443,7 +443,7 @@ export type StorageColumnTypes = {
       readonly position: CodecTypes['pg/int4@1']['output'];
       readonly startPage: CodecTypes['pg/int4@1']['output'];
       readonly status: CodecTypes['pg/text@1']['output'];
-      readonly updatedAt: CodecTypes['pg/timestamptz-string@1']['output'];
+      readonly updatedAt: CodecTypes['pg/timestamptz-temporal@1']['output'];
     };
     readonly documentType: {
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
@@ -526,7 +526,7 @@ export type StorageColumnInputTypes = {
       readonly position: CodecTypes['pg/int4@1']['input'];
       readonly startPage: CodecTypes['pg/int4@1']['input'];
       readonly status: CodecTypes['pg/text@1']['input'];
-      readonly updatedAt: CodecTypes['pg/timestamptz-string@1']['input'];
+      readonly updatedAt: CodecTypes['pg/timestamptz-temporal@1']['input'];
     };
     readonly documentType: {
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
@@ -871,7 +871,7 @@ type ContractBase = Omit<
                 };
                 readonly updatedAt: {
                   readonly nativeType: 'timestamptz';
-                  readonly codecId: 'pg/timestamptz-string@1';
+                  readonly codecId: 'pg/timestamptz-temporal@1';
                   readonly nullable: false;
                 };
               };
@@ -1469,7 +1469,7 @@ type ContractBase = Omit<
                 readonly nullable: false;
                 readonly type: {
                   readonly kind: 'scalar';
-                  readonly codecId: 'pg/timestamptz-string@1';
+                  readonly codecId: 'pg/timestamptz-temporal@1';
                 };
               };
             };
@@ -1887,8 +1887,8 @@ type ContractBase = Omit<
             readonly table: 'documentInstance';
             readonly column: 'updatedAt';
           };
-          readonly onCreate: { readonly kind: 'generator'; readonly id: 'timestampNow' };
-          readonly onUpdate: { readonly kind: 'generator'; readonly id: 'timestampNow' };
+          readonly onCreate: { readonly kind: 'generator'; readonly id: 'instantNow' };
+          readonly onUpdate: { readonly kind: 'generator'; readonly id: 'instantNow' };
         },
         {
           readonly ref: {

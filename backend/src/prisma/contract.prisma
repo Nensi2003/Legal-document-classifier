@@ -46,6 +46,8 @@ model Document {
   generatedJSON  GeneratedJSON?
   createdAt      TimestamptzString @default(now())
   updatedAt      temporal.updatedAtString()
+
+  instances DocumentInstance[]
 }
 
 model Field {
@@ -86,5 +88,32 @@ model Batch {
   documents Document[]
   createdAt TimestamptzString @default(now())
   updatedAt temporal.updatedAtString()
+}
+
+model DocumentInstance {
+  id              Int      @id @default(autoincrement())
+
+   documentId Int
+  document   Document @relation(
+    fields: [documentId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  position        Int
+  startPage       Int
+  endPage         Int
+
+  detectionMethod String?
+  detectionScore  Int?
+
+  extractedText   String?
+  status          String   @default("DRAFT")
+  draftData       Json?
+
+  generatedJSON   Json?
+
+  createdAt TimestamptzString @default(now())
+updatedAt temporal.updatedAtString()
 }
 

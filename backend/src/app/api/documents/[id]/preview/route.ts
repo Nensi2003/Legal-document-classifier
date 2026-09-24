@@ -1,9 +1,10 @@
 import { readFile } from "fs/promises";
-import path from "path";
-import { NextRequest, NextResponse } from "next/server";
+ import { NextRequest, NextResponse } from "next/server";
 import mammoth from "mammoth";
 import { parse } from "csv-parse/sync";
 import sanitizeHtml from "sanitize-html";
+
+import { getStoredFilePath } from "@/lib/fileStorage";
 
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/prisma/db";
@@ -89,7 +90,7 @@ export async function GET(
       );
     }
 
-
+const filePath = getStoredFilePath(document.filePath);
     /*
      * ---------------------------------------------------------
      * DOCX
@@ -103,14 +104,14 @@ export async function GET(
   const result =
     document.mimeType === "application/msword"
       ? await withConvertedDocx(
-          document.filePath,
-          (docxPath) =>
-            mammoth.convertToHtml({
-              path: docxPath,
-            })
-        )
+  filePath,
+  (docxPath) =>
+    mammoth.convertToHtml({
+      path: docxPath,
+    })
+)
       : await mammoth.convertToHtml({
-          path: document.filePath,
+          path: filePath,
         });
 
   const html = sanitizeHtml(result.value, {
@@ -154,7 +155,7 @@ export async function GET(
      */
     if (document.mimeType === "text/csv") {
       const fileBuffer =
-        await readFile(document.filePath);
+        await readFile(filePath);
 
       const fileContent =
         fileBuffer.toString("utf-8");

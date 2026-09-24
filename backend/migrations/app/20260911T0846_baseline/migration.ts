@@ -1,8 +1,14 @@
 #!/usr/bin/env -S node
+import {
+  Migration,
+  MigrationCLI,
+  col,
+  fn,
+  lit,
+  primaryKey,
+} from '@prisma/orm-postgres/migration';
 import type { Contract as End } from '../../snapshots/45ac7f209aa11fa19d5c2f44443b8e33a43e8922cb7b4ad73542720b5792e8ed/contract';
 import endContract from '../../snapshots/45ac7f209aa11fa19d5c2f44443b8e33a43e8922cb7b4ad73542720b5792e8ed/contract.json' with { type: 'json' };
-import { Migration, MigrationCLI, col, fn, lit, primaryKey } from '@prisma/orm-postgres/migration';
-
 export default class M extends Migration<never, End> {
   override readonly endContractJson = endContract;
 
@@ -196,6 +202,28 @@ export default class M extends Migration<never, End> {
           name: 'generatedJSON_documentId_fkey',
           columns: ['documentId'],
           references: { schema: 'public', table: 'document', columns: ['id'] },
+        },
+      }),
+
+      this.dropConstraint({
+        schema: 'public',
+        table: 'documentInstance',
+        constraint: 'documentInstance_documentId_fkey',
+        kind: 'foreignKey',
+      }),
+
+      this.addForeignKey({
+        schema: 'public',
+        table: 'documentInstance',
+        foreignKey: {
+          name: 'documentInstance_documentId_fkey',
+          columns: ['documentId'],
+          references: {
+            schema: 'public',
+            table: 'document',
+            columns: ['id'],
+          },
+          onDelete: 'cascade',
         },
       }),
     ];

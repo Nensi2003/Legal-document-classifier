@@ -35,7 +35,6 @@ export async function POST(request: NextRequest) {
 
     // 2. Get uploaded file
     const formData = await request.formData();
-
     const file = formData.get("file");
 
     if (!(file instanceof File)) {
@@ -83,22 +82,29 @@ export async function POST(request: NextRequest) {
     const uniqueFileName =
       `${randomUUID()}${fileExtension}`;
 
+    // 7. Create the actual filesystem path
     const filePath = path.join(
       uploadDirectory,
       uniqueFileName
     );
 
-    // 7. Convert file to Buffer
+    // 8. Convert file to Buffer
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // 8. Save file
+    // 9. Save the physical file
     await writeFile(filePath, buffer);
 
-    // 9. Save metadata in database
+    // 10. Store a portable relative path in the database
+    const storedFilePath = path.posix.join(
+      "uploads",
+      uniqueFileName
+    );
+
+    // 11. Save document metadata
     const document = await createDocument({
       fileName: file.name,
-      filePath,
+      filePath: storedFilePath,
       mimeType: file.type,
       userId: user.id,
     });
@@ -128,7 +134,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-
 export async function GET() {
   try {
     // 1. Check authentication
@@ -144,41 +149,40 @@ export async function GET() {
     }
 
     // 2. Get documents belonging to the current user
-    // const documents = await db.orm.public.Document
-    //   .where({ userId: user.id })
-    //   .all();
-
-    // // 3. Return documents
-    // return NextResponse.json({
-    //   documents,
-    // });
-
     const documents = await db.orm.public.Document
-  .where({ userId: user.id })
-  .all();
+      .where({ userId: user.id })
+      .all();
 
-const documentTypes = await db.orm.public.DocumentType.all();
+    // 3. Get document types
+    const documentTypes =
+      await db.orm.public.DocumentType.all();
 
-const documentsWithType = documents.map((document) => {
-  const documentType = documentTypes.find(
-    (type) => type.id === document.documentTypeId
-  );
+    // 4. Attach document type name
+    const documentsWithType = documents.map(
+      (document) => {
+        const documentType = documentTypes.find(
+          (type) =>
+            type.id === document.documentTypeId
+        );
 
-  return {
-    ...document,
-    documentTypeName: documentType?.name ?? null,
-  };
-});
+        return {
+          ...document,
+          documentTypeName:
+            documentType?.name ?? null,
+        };
+      }
+    );
 
-return NextResponse.json({
-  documents: documentsWithType,
-});
+    return NextResponse.json({
+      documents: documentsWithType,
+    });
   } catch (error) {
     console.error("Get documents error:", error);
 
     return NextResponse.json(
       {
-        error: "Something went wrong while retrieving documents",
+        error:
+          "Something went wrong while retrieving documents",
       },
       { status: 500 }
     );

@@ -1,24 +1,32 @@
 import { useEffect, useState } from "react";
 
 import {
-    getDocumentById,
-    type Document,
+  getDocumentById,
+  type Document,
 } from "../api";
 
 import {
-    getDraft,
-    saveDraft,
+  getDraft,
+  saveDraft,
 } from "../draftApi";
 
 import {
-    generateDocumentJSON,
-    type ValidationError,
+  generateDocumentJSON,
+  generateInstanceJSON,
+  generateCombinedJSON,
+  type ValidationError,
 } from "../jsonApi";
 
 import {
-    getDocumentTypeById,
-    type DocumentType,
+  getDocumentTypeById,
+  type DocumentType,
 } from "../../document-types/api";
+
+import {
+  getDocumentInstances,
+  saveInstanceDraft,
+  type DocumentInstance,
+} from "../instancesApi";
 
 import type { JSONSchema } from "../../../types/jsonSchema";
 
@@ -37,9 +45,15 @@ export function DocumentForm({
   const [currentDocument, setCurrentDocument] =
     useState<Document | null>(null);
 
- const [previewMode, setPreviewMode] = useState<
-  "document" | "text"
->("text");
+  const [instances, setInstances] =
+    useState<DocumentInstance[]>([]);
+
+  const [currentInstanceIndex, setCurrentInstanceIndex] =
+    useState(0);
+
+  const [previewMode, setPreviewMode] = useState<
+    "document" | "text"
+  >("text");
 
   const [documentType, setDocumentType] =
     useState<DocumentType | null>(null);
@@ -71,14 +85,23 @@ export function DocumentForm({
   const [generatedJSON, setGeneratedJSON] =
     useState<unknown>(null);
 
+  const currentInstance =
+    instances[currentInstanceIndex] ?? null;
+
+  const [draftDirty, setDraftDirty] =
+    useState(false);
+
   /*
-   * Load document, document type and draft
+   * ============================================================
+   * Load document, document type, instances and drafts
+   * ============================================================
    */
   useEffect(() => {
     async function loadData() {
       try {
         setLoading(true);
         setError("");
+        setCurrentInstanceIndex(0);
 
         const documentData =
           await getDocumentById(documentId);
@@ -99,12 +122,52 @@ export function DocumentForm({
 
         setDocumentType(documentTypeData);
 
-        const draft =
-          await getDraft(documentId);
+        /*
+         * Load detected document instances.
+         *
+         * For a multi-document PDF:
+         *   Instance 1 → pages 1–2
+         *   Instance 2 → pages 3–4
+         *   Instance 3 → pages 5–6
+         *
+         * For an older/single document without instances,
+         * we fall back to the existing Document draft.
+         */
+        const documentInstances =
+          await getDocumentInstances(documentId);
 
-        if (draft.draftData) {
-          setFormData(draft.draftData);
+        setInstances(documentInstances);
+        setDraftDirty(false);
+
+        if (documentInstances.length > 0) {
+          const firstInstance =
+            documentInstances[0];
+
+          if (firstInstance.draftData) {
+            setFormData(firstInstance.draftData);
+          } else {
+            setFormData({});
+          }
+        } else {
+          /*
+           * Backward compatibility:
+           * documents created before DocumentInstance
+           * support can still use the parent Document draft.
+           */
+          const draft =
+            await getDraft(documentId);
+
+          if (draft.draftData) {
+            setFormData(draft.draftData);
+          } else {
+            setFormData({});
+          }
         }
+
+        setValidationErrors([]);
+        setGenerationError("");
+        setGenerationSuccess(false);
+        setGeneratedJSON(null);
       } catch (error) {
         console.error(error);
 
@@ -122,7 +185,9 @@ export function DocumentForm({
   }, [documentId]);
 
   /*
+   * ============================================================
    * Handle field changes
+   * ============================================================
    */
   function handleFieldChange(
     name: string,
@@ -133,6 +198,8 @@ export function DocumentForm({
       [name]: value,
     }));
 
+    setDraftDirty(true);
+
     setValidationErrors([]);
     setGenerationError("");
     setGenerationSuccess(false);
@@ -140,21 +207,61 @@ export function DocumentForm({
   }
 
   /*
+   * ============================================================
    * Automatically save draft
+   *
+   * Multi-instance documents:
+   *   save to DocumentInstance.draftData
+   *
+   * Older/single documents without instances:
+   *   save to Document.draftData
+   * ============================================================
    */
   useEffect(() => {
     if (loading) return;
     if (!documentType) return;
+    if (!draftDirty) return;
+
+    // Track only the ID, not the whole instance object.
+    // Updating instances after a save must not restart autosave.
+    const instanceId = currentInstance?.id ?? null;
 
     const timeout = setTimeout(
       async () => {
         try {
           setSavingDraft(true);
 
-          await saveDraft(
-            documentId,
-            formData
-          );
+          if (instanceId !== null) {
+            const savedInstance =
+              await saveInstanceDraft(
+                documentId,
+                instanceId,
+                formData
+              );
+
+            // Keep the local instance snapshot synchronized
+            // without changing the instance ID.
+            setInstances((currentInstances) =>
+              currentInstances.map((instance) =>
+                instance.id === instanceId
+                  ? {
+                      ...instance,
+                      draftData:
+                        savedInstance.draftData,
+                      status:
+                        savedInstance.status,
+                    }
+                  : instance
+              )
+            );
+          } else {
+            await saveDraft(
+              documentId,
+              formData
+            );
+          }
+
+          setDraftDirty(false);
         } catch (error) {
           console.error(
             "Failed to save draft:",
@@ -167,50 +274,357 @@ export function DocumentForm({
       700
     );
 
-    return () => clearTimeout(timeout);
+    return () =>
+      clearTimeout(timeout);
   }, [
     formData,
     documentId,
     documentType,
     loading,
+    draftDirty,
+    currentInstance?.id,
   ]);
 
   /*
-   * Generate JSON
+   * ============================================================
+   * Switch between document instances
+   * ============================================================
    */
-  async function handleGenerateJSON() {
+  async function handleInstanceChange(
+    nextIndex: number
+  ) {
+    if (
+      nextIndex < 0 ||
+      nextIndex >= instances.length ||
+      nextIndex === currentInstanceIndex
+    ) {
+      return;
+    }
+
+    try {
+      /*
+       * Only save when the current instance has
+       * unsaved user changes.
+       */
+      if (currentInstance && draftDirty) {
+        setSavingDraft(true);
+
+        const savedInstance =
+          await saveInstanceDraft(
+            documentId,
+            currentInstance.id,
+            formData
+          );
+
+        setInstances((currentInstances) =>
+          currentInstances.map((instance) =>
+            instance.id === currentInstance.id
+              ? {
+                  ...instance,
+                  draftData:
+                    savedInstance.draftData,
+                  status:
+                    savedInstance.status,
+                }
+              : instance
+          )
+        );
+      }
+
+      const nextInstance =
+        instances[nextIndex];
+
+      setCurrentInstanceIndex(nextIndex);
+
+      setFormData(
+        nextInstance.draftData ?? {}
+      );
+
+      setDraftDirty(false);
+
+      setValidationErrors([]);
+      setGenerationError("");
+      setGenerationSuccess(false);
+      setGeneratedJSON(null);
+    } catch (error) {
+      console.error(
+        "Failed to switch document instance:",
+        error
+      );
+    } finally {
+      setSavingDraft(false);
+    }
+  }
+
+  /*
+   * ============================================================
+   * Generate JSON for current instance
+   * ============================================================
+   */
+  async function handleGenerateInstanceJSON() {
+    if (!currentInstance) {
+      setGenerationError("No document instance is selected.");
+      return;
+    }
+
     try {
       setGeneratingJSON(true);
-
       setGenerationError("");
       setGenerationSuccess(false);
       setValidationErrors([]);
       setGeneratedJSON(null);
 
-      const result =
-        await generateDocumentJSON(
+      // Make sure the latest field changes are saved before generating.
+      if (draftDirty) {
+        setSavingDraft(true);
+
+        const savedInstance = await saveInstanceDraft(
           documentId,
+          currentInstance.id,
           formData
         );
 
-      /*
-       * AJV validation failed
-       */
+        setInstances((currentInstances) =>
+          currentInstances.map((instance) =>
+            instance.id === currentInstance.id
+              ? {
+                  ...instance,
+                  draftData: savedInstance.draftData,
+                  status: savedInstance.status,
+                }
+              : instance
+          )
+        );
+
+        setDraftDirty(false);
+        setSavingDraft(false);
+      }
+
+      const result = await generateInstanceJSON(
+        documentId,
+        currentInstance.id
+      );
+
       if (!result.valid) {
-        setValidationErrors(
-          result.errors ?? []
+        setValidationErrors((result.errors ?? []) as ValidationError[]);
+        return;
+      }
+
+      const generatedData =
+        result.instance?.generatedJSON ?? null;
+
+      setGeneratedJSON(generatedData);
+      setGenerationSuccess(true);
+
+      // Keep the local instance state synchronized.
+      setInstances((currentInstances) =>
+        currentInstances.map((instance) =>
+          instance.id === currentInstance.id
+            ? {
+                ...instance,
+                status: result.instance?.status ?? "COMPLETED",
+                generatedJSON: generatedData,
+              }
+            : instance
+        )
+      );
+    } catch (error) {
+      console.error(error);
+
+      setGenerationError(
+        error instanceof Error
+          ? error.message
+          : "Failed to generate instance JSON."
+      );
+    } finally {
+      setSavingDraft(false);
+      setGeneratingJSON(false);
+    }
+  }
+
+  /*
+   * ============================================================
+   * Generate combined JSON
+   *
+   * The backend uses the current draftData of every instance.
+   * It does not depend on individual generatedJSON values.
+   * ============================================================
+   */
+  async function handleGenerateSingleDocumentJSON() {
+  try {
+    setGeneratingJSON(true);
+    setGenerationError("");
+    setGenerationSuccess(false);
+    setValidationErrors([]);
+    setGeneratedJSON(null);
+
+    // Save the latest form changes first.
+    if (draftDirty) {
+      setSavingDraft(true);
+
+      await saveDraft(
+        documentId,
+        formData
+      );
+
+      setDraftDirty(false);
+      setSavingDraft(false);
+    }
+
+    const result =
+      await generateDocumentJSON(
+        documentId
+      );
+
+    if (!result.valid) {
+  setValidationErrors(
+    (result.errors ?? []) as ValidationError[]
+  );
+  return;
+}
+
+    setGeneratedJSON(
+      result.generatedJSON?.data ?? null
+    );
+
+    setGenerationSuccess(true);
+  } catch (error) {
+    console.error(error);
+
+    setGenerationError(
+      error instanceof Error
+        ? error.message
+        : "Failed to generate JSON."
+    );
+  } finally {
+    setSavingDraft(false);
+    setGeneratingJSON(false);
+  }
+}
+
+
+  async function handleGenerateCombinedJSON() {
+    try {
+      setGeneratingJSON(true);
+      setGenerationError("");
+      setGenerationSuccess(false);
+      setValidationErrors([]);
+      setGeneratedJSON(null);
+
+      // A document without instances is a normal single document.
+      if (instances.length === 0) {
+        if (draftDirty) {
+          setSavingDraft(true);
+
+          await saveDraft(
+            documentId,
+            formData
+          );
+
+          setDraftDirty(false);
+          setSavingDraft(false);
+        }
+
+        const result = await generateDocumentJSON(
+          documentId
+        );
+
+        if (!result.valid) {
+          setValidationErrors(
+            (result.errors ?? []) as ValidationError[]
+          );
+          return;
+        }
+
+        setGeneratedJSON(
+          result.generatedJSON?.data ?? null
+        );
+        setGenerationSuccess(true);
+        return;
+      }
+
+      // For multi-instance documents, save the current instance first
+      // so the combined JSON includes the latest edits.
+      if (currentInstance && draftDirty) {
+        setSavingDraft(true);
+
+        const savedInstance =
+          await saveInstanceDraft(
+            documentId,
+            currentInstance.id,
+            formData
+          );
+
+        setInstances((currentInstances) =>
+          currentInstances.map((instance) =>
+            instance.id === currentInstance.id
+              ? {
+                  ...instance,
+                  draftData: savedInstance.draftData,
+                  status: savedInstance.status,
+                }
+              : instance
+          )
+        );
+
+        setDraftDirty(false);
+        setSavingDraft(false);
+      }
+
+      const result = await generateCombinedJSON(
+        documentId
+      );
+
+      if (!result.valid) {
+       const groupedErrors = result.errors ?? [];
+
+if (groupedErrors.length === 0) {
+  setValidationErrors([]);
+} else {
+  const firstError = groupedErrors[0];
+
+  if (
+    firstError &&
+    typeof firstError === "object" &&
+    "instanceId" in firstError
+  ) {
+    const instanceErrors =
+      groupedErrors as Array<{
+        instanceId: number;
+        errors: ValidationError[];
+      }>;
+
+    const currentErrors =
+      instanceErrors.find(
+        (item: {
+          instanceId: number;
+          errors: ValidationError[];
+        }) =>
+          item.instanceId ===
+          currentInstance?.id
+      );
+
+    setValidationErrors(
+      currentErrors?.errors ?? []
+    );
+  } else {
+    const validationErrors =
+      groupedErrors as ValidationError[];
+
+    setValidationErrors(validationErrors);
+  }
+}
+
+        setGenerationError(
+          "Some document instances contain validation errors. Please review them before generating the combined JSON."
         );
 
         return;
       }
 
-      /*
-       * JSON generated successfully
-       */
       setGeneratedJSON(
         result.generatedJSON?.data ?? null
       );
-
       setGenerationSuccess(true);
     } catch (error) {
       console.error(error);
@@ -218,15 +632,16 @@ export function DocumentForm({
       setGenerationError(
         error instanceof Error
           ? error.message
-          : "Failed to generate JSON."
+          : "Failed to generate combined JSON."
       );
     } finally {
+      setSavingDraft(false);
       setGeneratingJSON(false);
     }
   }
-
   /*
    * Copy generated JSON
+   * ============================================================
    */
   async function handleCopyJSON() {
     if (generatedJSON === null) {
@@ -250,7 +665,9 @@ export function DocumentForm({
   }
 
   /*
+   * ============================================================
    * Download generated JSON
+   * ============================================================
    */
   function handleDownloadJSON() {
     if (generatedJSON === null) {
@@ -284,13 +701,18 @@ export function DocumentForm({
         ""
       );
 
+    const instanceSuffix =
+      currentInstance
+        ? `-instance-${currentInstance.position}`
+        : "";
+
     const link =
       document.createElement("a");
 
     link.href = url;
 
     link.download =
-      `${baseName}.json`;
+      `${baseName}${instanceSuffix}.json`;
 
     document.body.appendChild(link);
 
@@ -302,31 +724,32 @@ export function DocumentForm({
   }
 
   /*
+   * ============================================================
    * Loading
+   * ============================================================
    */
   if (loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <div className="text-center">
-
           <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900" />
 
           <p className="text-sm text-slate-500">
             Loading document...
           </p>
-
         </div>
       </div>
     );
   }
 
   /*
+   * ============================================================
    * General error
+   * ============================================================
    */
   if (error) {
     return (
       <div className="rounded-xl border border-red-200 bg-red-50 p-6">
-
         <button
           type="button"
           onClick={onBack}
@@ -341,18 +764,18 @@ export function DocumentForm({
         >
           {error}
         </p>
-
       </div>
     );
   }
 
   /*
+   * ============================================================
    * Missing document or template
+   * ============================================================
    */
   if (!currentDocument || !documentType) {
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-
         <button
           type="button"
           onClick={onBack}
@@ -364,14 +787,14 @@ export function DocumentForm({
         <p className="text-sm text-slate-500">
           Document information is unavailable.
         </p>
-
       </div>
     );
   }
 
   /*
-   * DocumentType stores jsonSchema as unknown,
-   * so convert it to our JSONSchema type.
+   * ============================================================
+   * Document schema
+   * ============================================================
    */
   const schema =
     documentType.jsonSchema as JSONSchema;
@@ -384,7 +807,6 @@ export function DocumentForm({
           ===================================================== */}
 
       <div>
-
         <button
           type="button"
           onClick={onBack}
@@ -406,6 +828,12 @@ export function DocumentForm({
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">
                 {documentType.domain}
               </span>
+
+              {instances.length > 1 && (
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-600">
+                  {instances.length} documents detected
+                </span>
+              )}
 
             </div>
 
@@ -444,189 +872,268 @@ export function DocumentForm({
         </div>
       </div>
 
+      {/* =====================================================
+          INSTANCE NAVIGATION
+          ===================================================== */}
+
+      {instances.length > 0 && (
+        <section className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+
+            <div>
+              <p className="text-sm font-semibold text-slate-900">
+                Document {currentInstanceIndex + 1} of{" "}
+                {instances.length}
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Pages{" "}
+                {currentInstance?.startPage}–
+                {currentInstance?.endPage}
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleInstanceChange(
+                    currentInstanceIndex - 1
+                  )
+                }
+                disabled={
+                  currentInstanceIndex === 0 ||
+                  savingDraft
+                }
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                ← Previous
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleInstanceChange(
+                    currentInstanceIndex + 1
+                  )
+                }
+                disabled={
+                  currentInstanceIndex ===
+                    instances.length - 1 ||
+                  savingDraft
+                }
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                Next →
+              </button>
+
+            </div>
+
+          </div>
+
+        </section>
+      )}
 
       {/* =====================================================
-    MAIN WORKSPACE
-    ===================================================== */}
+          MAIN WORKSPACE
+          ===================================================== */}
 
-<div className="grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
 
-  {/* =================================================
-      LEFT: DOCUMENT / EXTRACTED TEXT
-      ================================================= */}
+        {/* =================================================
+            LEFT: DOCUMENT / EXTRACTED TEXT
+            ================================================= */}
 
-  <section className="min-w-0 self-start overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <section className="min-w-0 self-start overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
-    {/* Preview header */}
-    <div className="border-b border-slate-200 px-5 py-4">
+          {/* Preview header */}
+          <div className="border-b border-slate-200 px-5 py-4">
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
-        <div className="min-w-0">
+              <div className="min-w-0">
 
-          <h2 className="font-semibold text-slate-900">
-            {previewMode === "text"
-              ? "Extracted Text"
-              : "Document Preview"}
-          </h2>
+                <h2 className="font-semibold text-slate-900">
+                  {previewMode === "text"
+                    ? "Extracted Text"
+                    : "Document Preview"}
+                </h2>
 
-          <p className="mt-1 truncate text-xs text-slate-500">
-            {currentDocument.fileName}
-          </p>
-
-        </div>
-
-
-        {/* Preview buttons */}
-        <div className="flex shrink-0 gap-2">
-
-          {/* Extracted text */}
-          <button
-            type="button"
-            onClick={() =>
-              setPreviewMode("text")
-            }
-            className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${
-              previewMode === "text"
-                ? "bg-slate-900 text-white"
-                : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            <span>📝</span>
-            Extracted text
-          </button>
-
-
-          {/* Document preview */}
-          <button
-            type="button"
-            onClick={() =>
-              setPreviewMode("document")
-            }
-            className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${
-              previewMode === "document"
-                ? "bg-slate-900 text-white"
-                : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            <span>👁</span>
-            Document preview
-          </button>
-
-        </div>
-
-      </div>
-    </div>
-
-
-    {/* Preview content */}
-    <div className="p-5">
-
-      <div className="h-[650px] overflow-auto rounded-xl border border-slate-200 bg-slate-50">
-
-        {previewMode === "text" ? (
-
-          currentDocument.extractedText ? (
-            <pre className="whitespace-pre-wrap break-words p-5 font-mono text-xs leading-6 text-slate-600">
-              {currentDocument.extractedText}
-            </pre>
-          ) : (
-            <div className="flex h-full items-center justify-center p-8 text-center">
-
-              <div>
-
-                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white text-2xl shadow-sm">
-                  📝
-                </div>
-
-                <p className="text-sm font-medium text-slate-700">
-                  No extracted text available
+                <p className="mt-1 truncate text-xs text-slate-500">
+                  {currentDocument.fileName}
                 </p>
 
-                <p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">
-                  The document does not contain readable
-                  extracted content.
-                </p>
+                {currentInstance && (
+                  <p className="mt-1 text-xs font-medium text-blue-600">
+                    Pages{" "}
+                    {currentInstance.startPage}–
+                    {currentInstance.endPage}
+                  </p>
+                )}
+
+              </div>
+
+              {/* Preview buttons */}
+              <div className="flex shrink-0 gap-2">
+
+                {/* Extracted text */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPreviewMode("text")
+                  }
+                  className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                    previewMode === "text"
+                      ? "bg-slate-900 text-white"
+                      : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <span>📝</span>
+                  Extracted text
+                </button>
+
+                {/* Document preview */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPreviewMode("document")
+                  }
+                  className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                    previewMode === "document"
+                      ? "bg-slate-900 text-white"
+                      : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <span>👁</span>
+                  Document preview
+                </button>
 
               </div>
 
             </div>
-          )
 
-        ) : (
+          </div>
 
-          <DocumentPreview
-            documentId={currentDocument.id}
-            fileName={currentDocument.fileName}
-            mimeType={currentDocument.mimeType}
-          /> 
+          {/* Preview content */}
+          <div className="p-5">
 
-        )}
+            <div className="h-[650px] overflow-auto rounded-xl border border-slate-200 bg-slate-50">
 
-      </div>
+              {previewMode === "text" ? (
 
-    </div>
+                currentInstance?.extractedText ? (
 
-  </section>
+                  <pre className="whitespace-pre-wrap break-words p-5 font-mono text-xs leading-6 text-slate-600">
+                    {currentInstance.extractedText}
+                  </pre>
 
+                ) : currentDocument.extractedText ? (
 
-  {/* =================================================
-      RIGHT: STRUCTURED FORM
-      ================================================= */}
+                  <pre className="whitespace-pre-wrap break-words p-5 font-mono text-xs leading-6 text-slate-600">
+                    {currentDocument.extractedText}
+                  </pre>
 
-  <section className="min-w-0 self-start rounded-2xl border border-slate-200 bg-white shadow-sm">
+                ) : (
 
-    {/* Form header */}
-    <div className="border-b border-slate-200 px-6 py-5">
+                  <div className="flex h-full items-center justify-center p-8 text-center">
 
-      <h2 className="font-semibold text-slate-900">
-        {documentType.name} Information
-      </h2>
+                    <div>
 
-      <p className="mt-1 text-xs text-slate-500">
-        Complete the structured fields below.
-        Your progress is saved automatically.
-      </p>
+                      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white text-2xl shadow-sm">
+                        📝
+                      </div>
 
-    </div>
+                      <p className="text-sm font-medium text-slate-700">
+                        No extracted text available
+                      </p>
 
+                      <p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">
+                        The document does not contain readable
+                        extracted content.
+                      </p>
 
-    {/* Fields */}
-    <div className="p-6">
+                    </div>
 
-      <div className="space-y-5">
+                  </div>
 
-        {Object.entries(
-          schema.properties
-        ).map(
-          ([name, fieldSchema]) => (
-            <DynamicField
-              key={name}
-              name={name}
-              schema={fieldSchema}
-              value={formData[name]}
-              required={
-                schema.required?.includes(
-                  name
-                ) ?? false
-              }
-              onChange={(value) =>
-                handleFieldChange(
-                  name,
-                  value
                 )
-              }
-            />
-          )
-        )}
+
+              ) : (
+
+                <DocumentPreview
+                  documentId={currentDocument.id}
+                  fileName={currentDocument.fileName}
+                  mimeType={currentDocument.mimeType}
+                />
+
+              )}
+
+            </div>
+
+          </div>
+
+        </section>
+
+
+        {/* =================================================
+            RIGHT: STRUCTURED FORM
+            ================================================= */}
+
+        <section className="min-w-0 self-start rounded-2xl border border-slate-200 bg-white shadow-sm">
+
+          {/* Form header */}
+          <div className="border-b border-slate-200 px-6 py-5">
+
+            <h2 className="font-semibold text-slate-900">
+              {documentType.name} Information
+            </h2>
+
+            <p className="mt-1 text-xs text-slate-500">
+              Complete the structured fields below.
+              Your progress is saved automatically.
+            </p>
+
+          </div>
+
+
+          {/* Fields */}
+          <div className="p-6">
+
+            <div className="space-y-5">
+
+              {Object.entries(
+                schema.properties
+              ).map(
+                ([name, fieldSchema]) => (
+                  <DynamicField
+                    key={name}
+                    name={name}
+                    schema={fieldSchema}
+                    value={formData[name]}
+                    required={
+                      schema.required?.includes(
+                        name
+                      ) ?? false
+                    }
+                    onChange={(value) =>
+                      handleFieldChange(
+                        name,
+                        value
+                      )
+                    }
+                  />
+                )
+              )}
+
+            </div>
+
+          </div>
+
+        </section>
 
       </div>
-
-    </div>
-
-  </section>
-
-</div>
 
 
       {/* =====================================================
@@ -634,62 +1141,48 @@ export function DocumentForm({
           ===================================================== */}
 
       {validationErrors.length > 0 && (
-        <section className="rounded-2xl border border-red-200 bg-red-50 p-6">
+  <section className="rounded-2xl border border-red-200 bg-red-50 p-6">
+    <div className="mb-4 flex items-center gap-3">
+      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-100 text-sm text-red-600">
+        !
+      </div>
 
-          <div className="mb-4 flex items-center gap-3">
+      <div>
+        <h3 className="font-semibold text-red-900">
+          Validation Errors
+        </h3>
 
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-100 text-sm text-red-600">
-              !
-            </div>
+        <p className="mt-1 text-xs text-red-600">
+          Please correct the following fields
+          before generating JSON.
+        </p>
+      </div>
+    </div>
 
-            <div>
+    <div className="space-y-3">
+      {validationErrors.map(
+        (validationError, index) => (
+          <div
+            key={index}
+            className="rounded-lg border border-red-200 bg-white px-4 py-3"
+          >
+            <p className="text-sm font-semibold text-red-800">
+              {getValidationErrorField(
+                validationError
+              )}
+            </p>
 
-              <h3 className="font-semibold text-red-900">
-                Validation Errors
-              </h3>
-
-              <p className="mt-1 text-xs text-red-600">
-                Please correct the following fields
-                before generating JSON.
-              </p>
-
-            </div>
-
+            <p className="mt-1 text-sm text-red-600">
+              {getValidationErrorMessage(
+                validationError
+              )}
+            </p>
           </div>
-
-
-          <div className="space-y-3">
-
-            {validationErrors.map(
-              (
-                validationError,
-                index
-              ) => (
-                <div
-                  key={index}
-                  className="rounded-lg border border-red-200 bg-white px-4 py-3"
-                >
-
-                  <p className="text-sm font-semibold text-red-800">
-                    {getValidationErrorField(
-                      validationError
-                    )}
-                  </p>
-
-                  <p className="mt-1 text-sm text-red-600">
-                    {getValidationErrorMessage(
-                      validationError
-                    )}
-                  </p>
-
-                </div>
-              )
-            )}
-
-          </div>
-
-        </section>
+        )
       )}
+    </div>
+  </section>
+)}
 
 
       {/* =====================================================
@@ -701,50 +1194,61 @@ export function DocumentForm({
           role="alert"
           className="rounded-xl border border-red-200 bg-red-50 px-4 py-3"
         >
-
           <p className="text-sm font-medium text-red-700">
             {generationError}
           </p>
-
         </div>
       )}
 
 
       {/* =====================================================
-          GENERATE ACTION
+          GENERATE ACTIONS
           ===================================================== */}
 
-      {!generationSuccess && (
-        <section className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      <section className="flex flex-col gap-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div>
+          <h3 className="font-semibold text-slate-900">
+            Generate JSON
+          </h3>
 
-          <div>
+          <p className="mt-1 text-sm text-slate-500">
+            Generate JSON for the current document instance or combine all document instances into one JSON output.
+          </p>
+        </div>
 
-            <h3 className="font-semibold text-slate-900">
-              Ready to generate?
-            </h3>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Validate the information and create the
-              structured JSON output.
-            </p>
-
-          </div>
-
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          {currentInstance && (
+            <button
+              type="button"
+              onClick={handleGenerateInstanceJSON}
+              disabled={generatingJSON || savingDraft}
+              className="shrink-0 rounded-lg bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {generatingJSON
+                ? "Generating..."
+                : `Generate Instance ${currentInstance.position} JSON →`}
+            </button>
+          )}
 
           <button
             type="button"
-            onClick={handleGenerateJSON}
-            disabled={generatingJSON}
-            className="shrink-0 rounded-lg bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            onClick={
+              instances.length > 0
+                ? handleGenerateCombinedJSON
+                : handleGenerateSingleDocumentJSON
+            }
+            disabled={generatingJSON || savingDraft}
+            className="shrink-0 rounded-lg border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
           >
             {generatingJSON
               ? "Generating..."
-              : "Generate JSON →"}
+              : instances.length > 0
+                ? "Generate Combined JSON →"
+                : "Generate JSON →"
+            }
           </button>
-
-        </section>
-      )}
-
+        </div>
+      </section>
 
       {/* =====================================================
           JSON SUCCESS
@@ -819,11 +1323,6 @@ export function DocumentForm({
           </section>
         )}
 
-
-      {/* =====================================================
-          DOCUMENT PREVIEW / EXTRACTED TEXT MODAL
-          ===================================================== */}
-
     </div>
   );
 }
@@ -851,7 +1350,6 @@ function getValidationErrorField(
     return error.params.missingProperty;
   }
 
-
   /*
    * Other errors:
    *
@@ -866,7 +1364,6 @@ function getValidationErrorField(
       .replace(/^\//, "")
       .replace(/\//g, ".");
   }
-
 
   return "Document";
 }
@@ -888,7 +1385,6 @@ function getValidationErrorMessage(
     return "Please fill in this field.";
   }
 
-
   /*
    * Format
    */
@@ -905,7 +1401,6 @@ function getValidationErrorMessage(
     return `Please enter a valid ${format}.`;
   }
 
-
   /*
    * Pattern
    */
@@ -921,7 +1416,6 @@ function getValidationErrorMessage(
     return "Please enter a value in the required format.";
   }
 
-
   /*
    * Minimum length
    */
@@ -932,7 +1426,6 @@ function getValidationErrorMessage(
 
     return `This value must contain at least ${limit} characters.`;
   }
-
 
   /*
    * Maximum length
@@ -945,7 +1438,6 @@ function getValidationErrorMessage(
     return `This value must contain no more than ${limit} characters.`;
   }
 
-
   /*
    * Minimum number
    */
@@ -957,7 +1449,6 @@ function getValidationErrorMessage(
     return `The value must be at least ${limit}.`;
   }
 
-
   /*
    * Maximum number
    */
@@ -968,7 +1459,6 @@ function getValidationErrorMessage(
 
     return `The value must be no more than ${limit}.`;
   }
-
 
   /*
    * Enum
@@ -985,14 +1475,12 @@ function getValidationErrorMessage(
     return "Please select one of the available options.";
   }
 
-
   /*
    * Type
    */
   if (error.keyword === "type") {
     return "Please enter a value of the correct type.";
   }
-
 
   return (
     error.message ??

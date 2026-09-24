@@ -1,5 +1,4 @@
 services:
-
   postgres:
     image: postgres:16
     container_name: legal-document-postgres
@@ -16,7 +15,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-
   backend:
     build:
       context: ./backend
@@ -30,17 +28,16 @@ services:
 
     environment:
       NODE_ENV: development
-
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/legal_documents
-
       SOFFICE_PATH: /usr/bin/soffice
 
     ports:
       - "3000:3000"
 
     volumes:
+      - ./backend:/app
+      - backend_node_modules:/app/node_modules
       - backend_uploads:/app/uploads
-
 
   frontend:
     build:
@@ -56,6 +53,12 @@ services:
     ports:
       - "5173:5173"
 
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+
 volumes:
   postgres_data:
   backend_uploads:
+  frontend_node_modules:
+  backend_node_modules:

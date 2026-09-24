@@ -24,8 +24,8 @@ export async function parseDocument(
     case "image/png":
       return parseImage(filePath);
 
-      case "application/msword":
-  return parseDoc(filePath);
+    case "application/msword":
+      return parseDoc(filePath);
 
     default:
       throw new UnsupportedDocumentTypeError(mimeType);

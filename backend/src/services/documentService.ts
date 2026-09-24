@@ -48,6 +48,7 @@ export async function deleteDocument(id: number, userId: number) {
       documentId: document.id,
     })
     .delete();
+    
 
   // Now delete the document itself.
   return db.orm.public.Document

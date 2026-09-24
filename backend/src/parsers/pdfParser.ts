@@ -12,11 +12,17 @@ export async function parsePdf(
   );
 
   const result = await extractText(pdf, {
-    mergePages: true,
+    mergePages: false,
   });
 
+  const pages = result.text.map((text, index) => ({
+    pageNumber: index + 1,
+    text: text.trim(),
+  }));
+
   return {
-    text: result.text.trim(),
+    text: pages.map((page) => page.text).join("\n\n").trim(),
+    pages,
     metadata: {
       pages: result.totalPages,
     },
