@@ -23,7 +23,9 @@ import {
 import { UploadDocument } from "./features/documents/UploadDocument";
 import { BatchUpload } from "./features/documents/BatchUpload";
 
+
 import { DocumentForm } from "./features/documents/components/DocumentForm";
+import { DocumentBoundaryReview } from "./features/documents/components/DocumentBoundaryReview";
 import { DocumentTypeSelector } from "./features/documents/components/DocumentTypeSelector";
 
 import { DocumentList } from "./features/documents/DocumentList";
@@ -79,10 +81,15 @@ function App() {
           if (Number.isInteger(documentId)) {
             try {
               const document =
-                await getDocumentById(documentId);
+  await getDocumentById(documentId);
 
-              setSelectedDocument(document);
-              setCurrentPage("document");
+setSelectedDocument(document);
+
+if (document.status === "REVIEW") {
+  setCurrentPage("boundary-review");
+} else {
+  setCurrentPage("document");
+}
             } catch (error) {
               console.error(
                 "Failed to load draft document:",
@@ -288,6 +295,45 @@ function App() {
 
 
   // --------------------------------------------------
+// Document boundary review
+// --------------------------------------------------
+
+if (
+  currentPage === "boundary-review" &&
+  selectedDocument !== null
+) {
+  return (
+    <AppLayout
+      currentPage="document"
+      onNavigate={handleNavigate}
+      userName={user.name}
+      onLogout={handleLogout}
+    >
+      <DocumentBoundaryReview
+  documentId={selectedDocument.id}
+  fileName={selectedDocument.fileName}
+  mimeType={selectedDocument.mimeType}
+  onConfirmed={async () => {
+    try {
+      const updatedDocument =
+        await getDocumentById(selectedDocument.id);
+
+      setSelectedDocument(updatedDocument);
+      setCurrentPage("document");
+    } catch (error) {
+      console.error(
+        "Failed to reload document after boundary confirmation:",
+        error
+      );
+    }
+  }}
+/>
+    </AppLayout>
+  );
+}
+
+
+  // --------------------------------------------------
   // Document workspace
   // --------------------------------------------------
 
@@ -295,6 +341,43 @@ function App() {
     currentPage === "document" &&
     selectedDocument !== null
   ) {
+
+    console.log("SELECTED DOCUMENT:", selectedDocument);
+console.log("SELECTED DOCUMENT ID:", selectedDocument.id);
+console.log("SELECTED DOCUMENT STATUS:", selectedDocument.status);
+
+    // Multiple document instances require boundary review first.
+if (selectedDocument.status === "REVIEW") {
+  return (
+    <AppLayout
+      currentPage="document"
+      onNavigate={handleNavigate}
+      userName={user.name}
+      onLogout={handleLogout}
+    >
+      <DocumentBoundaryReview
+  documentId={selectedDocument.id}
+  fileName={selectedDocument.fileName}
+  mimeType={selectedDocument.mimeType}
+  onConfirmed={async () => {
+    try {
+      const updatedDocument =
+        await getDocumentById(selectedDocument.id);
+
+      setSelectedDocument(updatedDocument);
+    } catch (error) {
+      console.error(
+        "Failed to reload document after confirming boundaries:",
+        error
+      );
+    }
+  }}
+/>
+    </AppLayout>
+  );
+}
+
+
     // Document has no template yet
     if (
       !selectedDocument.documentTypeId
