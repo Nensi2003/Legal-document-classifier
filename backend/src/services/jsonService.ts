@@ -302,35 +302,46 @@ export async function generateCombinedJSON(
   };
 
   const existingJSON =
+  await db.orm.public.GeneratedJSON
+    .where({
+      documentId,
+    })
+    .first();
+
+let generatedJSON;
+
+if (existingJSON) {
+  generatedJSON =
     await db.orm.public.GeneratedJSON
       .where({
         documentId,
       })
-      .first();
-
-  let generatedJSON;
-
-  if (existingJSON) {
-    generatedJSON =
-      await db.orm.public.GeneratedJSON
-        .where({
-          documentId,
-        })
-        .update({
-          data: combinedData,
-          isValid: true,
-        });
-  } else {
-    generatedJSON =
-      await db.orm.public.GeneratedJSON.create({
+      .update({
         data: combinedData,
         isValid: true,
-        documentId,
       });
-  }
+} else {
+  generatedJSON =
+    await db.orm.public.GeneratedJSON.create({
+      data: combinedData,
+      isValid: true,
+      documentId,
+    });
+}
 
-  return {
-    valid: true,
-    generatedJSON,
-  };
+// A multi-instance document is completed once
+// the combined JSON is successfully generated.
+await db.orm.public.Document
+  .where({
+    id: documentId,
+    userId,
+  })
+  .update({
+    status: "COMPLETED",
+  });
+
+return {
+  valid: true,
+  generatedJSON,
+};
 }

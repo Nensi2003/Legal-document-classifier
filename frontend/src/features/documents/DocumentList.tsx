@@ -411,32 +411,38 @@ export function DocumentList({
             </select>
 
             {/* Status filter */}
-            <select
-              value={selectedStatus}
-              onChange={(event) => {
-                setSelectedStatus(
-                  event.target.value
-                );
-                setCurrentPage(1);
-              }}
-              className="rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-700 outline-none transition hover:border-slate-300 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200"
-            >
-              <option value="">
-                All statuses
-              </option>
+<select
+  value={selectedStatus}
+  onChange={(event) => {
+    setSelectedStatus(event.target.value);
+    setCurrentPage(1);
+  }}
+  className="rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-700 outline-none transition hover:border-slate-300 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200"
+>
+  <option value="">
+    All statuses
+  </option>
 
-              <option value="PENDING">
-                Pending
-              </option>
+  <option value="PENDING">
+    Pending
+  </option>
 
-              <option value="DRAFT">
-                Draft
-              </option>
+  <option value="DRAFT">
+    Draft
+  </option>
 
-              <option value="COMPLETED">
-                Completed
-              </option>
-            </select>
+  <option value="REVIEW">
+    Review
+  </option>
+
+  <option value="READY">
+    Ready
+  </option>
+
+  <option value="COMPLETED">
+    Completed
+  </option>
+</select>
 
             {/* Clear filters */}
             {hasFilters && (
@@ -840,6 +846,20 @@ function getStatusConfig(
         className:
           "bg-amber-50 text-amber-700",
       };
+
+      case "REVIEW":
+  return {
+    label: "Review",
+    className:
+      "bg-orange-50 text-orange-700",
+  };
+
+case "READY":
+  return {
+    label: "Ready",
+    className:
+      "bg-purple-50 text-purple-700",
+  };
 
     case "DRAFT":
       return {
