@@ -117,6 +117,11 @@ export async function POST(
           parsedDocument.pages
         );
 
+        console.log(
+  "DETECTED BOUNDARIES:",
+  JSON.stringify(boundaries, null, 2)
+);
+
         /*
          * Remove old instances if this document is parsed again.
          * This prevents duplicate instances.

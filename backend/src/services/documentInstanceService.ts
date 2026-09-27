@@ -167,13 +167,13 @@ export async function splitDocumentInstance(
   }
 
   if (
-    splitPage < instance.startPage ||
-    splitPage >= instance.endPage
-  ) {
-    throw new Error(
-      "Split page must be inside the document instance range"
-    );
-  }
+  splitPage <= instance.startPage ||
+  splitPage > instance.endPage
+) {
+  throw new Error(
+    "Split page must be inside the document instance range"
+  );
+}
 
   const pages = await getParsedPages(
     document.filePath,
@@ -189,9 +189,9 @@ export async function splitDocumentInstance(
   }
 
   const firstStartPage = instance.startPage;
-  const firstEndPage = splitPage;
+  const firstEndPage = splitPage - 1;
 
-  const secondStartPage = splitPage + 1;
+const secondStartPage = splitPage;
   const secondEndPage = instance.endPage;
 
   const firstExtractedText = getTextForPageRange(
