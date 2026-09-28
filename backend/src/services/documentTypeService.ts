@@ -2,7 +2,9 @@ import { db } from "@/prisma/db";
 import type { JsonValue } from "@prisma/orm-postgres/target/codec-types";
 
 export async function getDocumentTypes() {
-  return db.orm.public.DocumentType.all();
+  return db.orm.public.DocumentType
+    .orderBy((documentType) => documentType.id.asc())
+    .all();
 }
 
 export async function getDocumentTypeById(id: number) {

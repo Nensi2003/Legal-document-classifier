@@ -62,6 +62,32 @@ export function TemplateEditor({
         return;
       }
 
+      const displayNames = Object.values(
+  schema.properties ?? {}
+)
+  .map((property) =>
+    (property.title ?? "").trim().toLowerCase()
+  )
+  .filter(Boolean);
+
+const fieldNames = Object.entries(
+  schema.properties ?? {}
+).flatMap(([fieldKey, property]) => [
+  fieldKey.trim().toLowerCase(),
+  (property.title ?? "").trim().toLowerCase(),
+]);
+
+const hasDuplicateFieldNames =
+  new Set(fieldNames.filter(Boolean)).size !==
+  fieldNames.filter(Boolean).length;
+
+if (hasDuplicateFieldNames) {
+  setError(
+    "Field names and display names must be unique."
+  );
+  return;
+}
+
       if (documentType) {
         await updateDocumentType(documentType.id, {
           name: name.trim(),
