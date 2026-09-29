@@ -1,13 +1,20 @@
 import bcrypt from "bcryptjs";
 import { db } from "../prisma/db";
 
+export interface AuthUser {
+  id: number;
+  email: string;
+  name: string | null;
+  role: string;
+}
+
 const SESSION_DURATION_DAYS = 7;
 
 export async function registerUser(
   email: string,
   password: string,
   name?: string
-) {
+): Promise<AuthUser> {
   const normalizedEmail = email.trim().toLowerCase();
 
   // Check if user already exists
@@ -33,13 +40,14 @@ export async function registerUser(
     id: user.id,
     email: user.email,
     name: user.name,
+    role: user.role,
   };
 }
 
 export async function loginUser(
   email: string,
   password: string
-) {
+): Promise<AuthUser> {
   const normalizedEmail = email.trim().toLowerCase();
 
   const user = await db.orm.public.User
@@ -110,9 +118,12 @@ export async function getUserFromSession(sessionId: string) {
     return null;
   }
 
-  return {
+    const authUser: AuthUser = {
     id: user.id,
     email: user.email,
     name: user.name,
+    role: user.role,
   };
+
+  return authUser;
 }

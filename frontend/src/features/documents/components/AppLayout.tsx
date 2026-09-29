@@ -6,6 +6,7 @@ interface AppLayoutProps {
   currentPage: string;
   onNavigate: (page: string) => void;
   userName?: string | null;
+  userRole?: string;
   onLogout: () => void;
 }
 
@@ -14,38 +15,51 @@ export function AppLayout({
   currentPage,
   onNavigate,
   userName,
+  userRole,
   onLogout,
 }: AppLayoutProps) {
   const { theme, toggleTheme } = useTheme();
 
-  const navigation = [
-    {
-      label: "Dashboard",
-      page: "dashboard",
-    },
-    {
-      label: "My Documents",
-      page: "documents",
-    },
-    {
-      label: "My Drafts",
-      page: "drafts",
-    },
-    {
-      label: "Templates",
-      page: "templates",
-    },
-  ];
+  const isAdmin = userRole === "ADMIN";
+
+  const navigation =
+  userRole === "ADMIN"
+    ? [
+        {
+          label: "Admin Dashboard",
+          page: "admin-dashboard",
+        },
+      ]
+    : [
+        {
+          label: "Dashboard",
+          page: "dashboard",
+        },
+        {
+          label: "My Documents",
+          page: "documents",
+        },
+        {
+          label: "My Drafts",
+          page: "drafts",
+        },
+        {
+          label: "Templates",
+          page: "templates",
+        },
+      ];
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
+    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <div className="flex min-h-screen">
 
-        {/* Sidebar */}
-        <aside className="hidden w-64 flex-col border-r border-slate-200 bg-white transition-colors dark:border-slate-800 dark:bg-slate-900 md:flex">
+        {/* =========================
+            SIDEBAR
+        ========================== */}
+        <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
 
           {/* Logo */}
-          <div className="flex h-20 items-center border-b border-slate-200 px-6 dark:border-slate-800">
+          <div className="flex h-20 shrink-0 items-center border-b border-slate-200 px-6 dark:border-slate-800">
             <div>
               <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
                 LegalDoc
@@ -58,10 +72,10 @@ export function AppLayout({
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 p-4">
+          <nav className="flex-1 overflow-y-auto p-4">
 
             <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Workspace
+              {isAdmin ? "Administration" : "Workspace"}
             </p>
 
             <div className="space-y-1">
@@ -85,60 +99,78 @@ export function AppLayout({
               })}
             </div>
 
-            <div className="my-6 border-t border-slate-200 dark:border-slate-800" />
+            {/* User actions */}
+            {!isAdmin && (
+              <>
+                <div className="my-6 border-t border-slate-200 dark:border-slate-800" />
 
-            {/* Actions */}
-            <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Actions
-            </p>
+                <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Actions
+                </p>
 
-            <div className="space-y-1">
-              <button
-                type="button"
-                onClick={() => onNavigate("upload")}
-                className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-              >
-                + Upload Document
-              </button>
+                <div className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => onNavigate("upload")}
+                    className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  >
+                    + Upload Document
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => onNavigate("batch-upload")}
-                className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-              >
-                + Batch Upload
-              </button>
-            </div>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate("batch-upload")}
+                    className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  >
+                    + Batch Upload
+                  </button>
+                </div>
+              </>
+            )}
           </nav>
 
           {/* User section */}
-          <div className="border-t border-slate-200 p-4 dark:border-slate-800">
+          <div className="shrink-0 border-t border-slate-200 p-4 dark:border-slate-800">
 
-            <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800">
-              <p className="truncate text-sm font-medium text-slate-900 dark:text-white">
-                {userName || "User"}
-              </p>
+            <div className="mb-3 flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-3 dark:bg-slate-800">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-100">
+                {getInitial(userName)}
+              </div>
+
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-slate-900 dark:text-white">
+                  {userName || "User"}
+                </p>
+
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {isAdmin ? "Administrator" : "User"}
+                </p>
+              </div>
             </div>
 
             <button
               type="button"
               onClick={onLogout}
-              className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-500 transition hover:bg-red-50 hover:text-red-600 dark:text-slate-400 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+              className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-500 transition hover:bg-red-50 hover:text-red-600 dark:text-slate-400 dark:hover:bg-red-950/40 dark:hover:text-red-400"
             >
               Log out
             </button>
           </div>
         </aside>
 
-        {/* Main area */}
+        {/* =========================
+            MAIN AREA
+        ========================== */}
         <div className="flex min-w-0 flex-1 flex-col">
 
           {/* Top bar */}
-          <header className="flex h-20 items-center justify-between border-b border-slate-200 bg-white px-6 transition-colors dark:border-slate-800 dark:bg-slate-900">
+          <header className="flex h-20 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900">
 
             <div>
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Document management
+                {isAdmin
+                  ? "Administration"
+                  : "Document management"}
               </p>
 
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
@@ -148,14 +180,16 @@ export function AppLayout({
 
             <div className="flex items-center gap-3">
 
-              {/* Upload */}
-              <button
-                type="button"
-                onClick={() => onNavigate("upload")}
-                className="hidden rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 sm:block"
-              >
-                + Upload
-              </button>
+              {/* Upload button for normal users */}
+              {!isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate("upload")}
+                  className="hidden rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 sm:block"
+                >
+                  + Upload
+                </button>
+              )}
 
               {/* Theme toggle */}
               <button
@@ -184,7 +218,7 @@ export function AppLayout({
           </header>
 
           {/* Page content */}
-          <main className="flex-1 p-6 transition-colors dark:bg-slate-950 lg:p-8">
+          <main className="flex-1 overflow-y-auto bg-slate-50 p-6 dark:bg-slate-950 lg:p-8">
             <div className="mx-auto max-w-7xl">
               {children}
             </div>
@@ -199,6 +233,9 @@ function getPageTitle(page: string): string {
   switch (page) {
     case "dashboard":
       return "Dashboard";
+
+    case "admin-dashboard":
+      return "Admin Dashboard";
 
     case "documents":
       return "My Documents";

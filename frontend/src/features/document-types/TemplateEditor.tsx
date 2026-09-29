@@ -62,14 +62,6 @@ export function TemplateEditor({
         return;
       }
 
-      const displayNames = Object.values(
-  schema.properties ?? {}
-)
-  .map((property) =>
-    (property.title ?? "").trim().toLowerCase()
-  )
-  .filter(Boolean);
-
 const fieldNames = Object.entries(
   schema.properties ?? {}
 ).flatMap(([fieldKey, property]) => [

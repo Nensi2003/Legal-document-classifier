@@ -46,3 +46,27 @@ export async function getCurrentUser() {
 
   return getUserFromSession(sessionId);
 }
+
+
+export async function requireAdmin() {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return {
+      user: null,
+      error: "Not authenticated",
+    };
+  }
+
+  if (user.role !== "ADMIN") {
+    return {
+      user: null,
+      error: "Admin access required",
+    };
+  }
+
+  return {
+    user,
+    error: null,
+  };
+}

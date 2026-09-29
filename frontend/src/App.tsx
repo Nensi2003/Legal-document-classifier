@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
-import { AppLayout } from "./features/documents/components/AppLayout";import { Dashboard } from "./features/dashboard/Dashboard";
+import { AppLayout } from "./features/documents/components/AppLayout";
+import { Dashboard } from "./features/dashboard/Dashboard";
 
 import {
   getCurrentUser,
@@ -23,7 +24,6 @@ import {
 import { UploadDocument } from "./features/documents/UploadDocument";
 import { BatchUpload } from "./features/documents/BatchUpload";
 
-
 import { DocumentForm } from "./features/documents/components/DocumentForm";
 import { DocumentBoundaryReview } from "./features/documents/components/DocumentBoundaryReview";
 import { DocumentTypeSelector } from "./features/documents/components/DocumentTypeSelector";
@@ -32,8 +32,12 @@ import { DocumentList } from "./features/documents/DocumentList";
 
 import { parseDocument } from "./features/documents/parseApi";
 
+import { AdminDashboard } from "./features/admin/AdminDashboard";
 
- 
+import { AdminUsers } from "./features/admin/AdminUsers";
+
+import { AdminDocuments } from "./features/admin/AdminDocuments";
+
 
 function App() {
   const [showRegister, setShowRegister] =
@@ -51,68 +55,74 @@ function App() {
   const [selectedDocument, setSelectedDocument] =
     useState<Document | null>(null);
 
- 
 
   // --------------------------------------------------
   // Check authentication
   // --------------------------------------------------
-   
 
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const currentUser = await getCurrentUser();
 
-  
- useEffect(() => {
-  async function checkAuth() {
-    try {
-      const currentUser = await getCurrentUser();
+        setUser(currentUser);
 
-      setUser(currentUser);
+        if (currentUser) {
+  setCurrentPage(
+    currentUser.role === "ADMIN"
+      ? "admin-dashboard"
+      : "dashboard"
+  );
 
-      if (currentUser) {
-        const params = new URLSearchParams(
-          window.location.search
-        );
+  const params = new URLSearchParams(
+    window.location.search
+  );
 
-        const documentIdParam =
-          params.get("documentId");
+          const documentIdParam =
+            params.get("documentId");
 
-        if (documentIdParam) {
-          const documentId = Number(documentIdParam);
+          if (documentIdParam) {
+            const documentId = Number(
+              documentIdParam
+            );
 
-          if (Number.isInteger(documentId)) {
-            try {
-              const document =
-  await getDocumentById(documentId);
+            if (Number.isInteger(documentId)) {
+              try {
+                const document =
+                  await getDocumentById(documentId);
 
-setSelectedDocument(document);
+                setSelectedDocument(document);
 
-if (document.status === "REVIEW") {
-  setCurrentPage("boundary-review");
-} else {
-  setCurrentPage("document");
-}
-            } catch (error) {
-              console.error(
-                "Failed to load draft document:",
-                error
-              );
+                if (document.status === "REVIEW") {
+                  setCurrentPage(
+                    "boundary-review"
+                  );
+                } else {
+                  setCurrentPage("document");
+                }
+              } catch (error) {
+                console.error(
+                  "Failed to load draft document:",
+                  error
+                );
+              }
             }
           }
         }
+      } catch (error) {
+        console.error(
+          "Failed to check authentication:",
+          error
+        );
+
+        setUser(null);
+      } finally {
+        setCheckingAuth(false);
       }
-    } catch (error) {
-      console.error(
-        "Failed to check authentication:",
-        error
-      );
-
-      setUser(null);
-    } finally {
-      setCheckingAuth(false);
     }
-  }
 
-  checkAuth();
-}, []);
+    checkAuth();
+  }, []);
 
 
   // --------------------------------------------------
@@ -150,15 +160,27 @@ if (document.status === "REVIEW") {
           />
         ) : (
           <LoginForm
-            onLogin={setUser}
-            onRegister={() =>
-              setShowRegister(true)
-            }
-          />
+  onLogin={(loggedInUser) => {
+    setUser(loggedInUser);
+
+    setCurrentPage(
+      loggedInUser.role === "ADMIN"
+        ? "admin-dashboard"
+        : "dashboard"
+    );
+  }}
+  onRegister={() =>
+    setShowRegister(true)
+  }
+/>
         )}
       </main>
     );
   }
+
+  // --------------------------------------------------
+  // From this point onward, user is NOT null.
+  // --------------------------------------------------
 
 
   // --------------------------------------------------
@@ -182,6 +204,84 @@ if (document.status === "REVIEW") {
 
 
   // --------------------------------------------------
+  // Navigation
+  // --------------------------------------------------
+
+  function handleNavigate(page: string) {
+    setSelectedDocument(null);
+    setCurrentPage(page);
+  }
+
+    // --------------------------------------------------
+  // Admin Dashboard
+  // --------------------------------------------------
+
+  if (
+    user.role === "ADMIN" &&
+    currentPage === "admin-dashboard"
+  ) {
+    return (
+      <AppLayout
+        currentPage={currentPage}
+        onNavigate={handleNavigate}
+        userName={user.name}
+        userRole={user.role}
+        onLogout={handleLogout}
+      >
+        <AdminDashboard
+          onNavigate={handleNavigate}
+        />
+      </AppLayout>
+    );
+  }
+
+
+  // --------------------------------------------------
+// Admin Users
+// --------------------------------------------------
+
+if (
+  user.role === "ADMIN" &&
+  currentPage === "admin-users"
+) {
+  return (
+    <AppLayout
+      currentPage={currentPage}
+      onNavigate={handleNavigate}
+      userName={user.name}
+      userRole={user.role}
+      onLogout={handleLogout}
+    >
+      <AdminUsers onNavigate={handleNavigate} />
+    </AppLayout>
+  );
+}
+
+
+// --------------------------------------------------
+// Admin Documents
+// --------------------------------------------------
+
+if (
+  user.role === "ADMIN" &&
+  currentPage === "admin-documents"
+) {
+  return (
+    <AppLayout
+      currentPage={currentPage}
+      onNavigate={handleNavigate}
+      userName={user.name}
+      userRole={user.role}
+      onLogout={handleLogout}
+    >
+      <AdminDocuments onNavigate={handleNavigate} />
+    </AppLayout>
+  );
+}
+
+
+
+  // --------------------------------------------------
   // Open document
   // --------------------------------------------------
 
@@ -202,21 +302,18 @@ if (document.status === "REVIEW") {
     }
   }
 
-  function handleOpenDraft(documentId: number) {
-  window.open(
-    `${window.location.origin}?documentId=${documentId}`,
-    "_blank"
-  );
-}
-
 
   // --------------------------------------------------
-  // Navigation
+  // Open draft
   // --------------------------------------------------
 
-  function handleNavigate(page: string) {
-    setSelectedDocument(null);
-    setCurrentPage(page);
+  function handleOpenDraft(
+    documentId: number
+  ) {
+    window.open(
+      `${window.location.origin}?documentId=${documentId}`,
+      "_blank"
+    );
   }
 
 
@@ -230,24 +327,18 @@ if (document.status === "REVIEW") {
         currentPage={currentPage}
         onNavigate={handleNavigate}
         userName={user.name}
+        userRole={user.role}
         onLogout={handleLogout}
       >
         <UploadDocument
           onUploaded={async (documentId) => {
             try {
-              await parseDocument(
-                documentId
-              );
+              await parseDocument(documentId);
 
               const document =
-                await getDocumentById(
-                  documentId
-                );
+                await getDocumentById(documentId);
 
-              setSelectedDocument(
-                document
-              );
-
+              setSelectedDocument(document);
               setCurrentPage("document");
             } catch (error) {
               console.error(
@@ -275,6 +366,7 @@ if (document.status === "REVIEW") {
         currentPage={currentPage}
         onNavigate={handleNavigate}
         userName={user.name}
+        userRole={user.role}
         onLogout={handleLogout}
       >
         <BatchUpload
@@ -295,21 +387,22 @@ if (document.status === "REVIEW") {
 
 
   // --------------------------------------------------
-// Document boundary review
-// --------------------------------------------------
+  // Document Boundary Review
+  // --------------------------------------------------
 
-if (
-  currentPage === "boundary-review" &&
-  selectedDocument !== null
-) {
-  return (
-    <AppLayout
-      currentPage="document"
-      onNavigate={handleNavigate}
-      userName={user.name}
-      onLogout={handleLogout}
-    >
-      <DocumentBoundaryReview
+  if (
+    currentPage === "boundary-review" &&
+    selectedDocument !== null
+  ) {
+    return (
+      <AppLayout
+        currentPage="document"
+        onNavigate={handleNavigate}
+        userName={user.name}
+        userRole={user.role}
+        onLogout={handleLogout}
+      >
+        <DocumentBoundaryReview
   documentId={selectedDocument.id}
   fileName={selectedDocument.fileName}
   mimeType={selectedDocument.mimeType}
@@ -328,13 +421,13 @@ if (
     }
   }}
 />
-    </AppLayout>
-  );
-}
+      </AppLayout>
+    );
+  }
 
 
   // --------------------------------------------------
-  // Document workspace
+  // Document Workspace
   // --------------------------------------------------
 
   if (
@@ -342,20 +435,34 @@ if (
     selectedDocument !== null
   ) {
 
-    console.log("SELECTED DOCUMENT:", selectedDocument);
-console.log("SELECTED DOCUMENT ID:", selectedDocument.id);
-console.log("SELECTED DOCUMENT STATUS:", selectedDocument.status);
+    console.log(
+      "SELECTED DOCUMENT:",
+      selectedDocument
+    );
+
+    console.log(
+      "SELECTED DOCUMENT ID:",
+      selectedDocument.id
+    );
+
+    console.log(
+      "SELECTED DOCUMENT STATUS:",
+      selectedDocument.status
+    );
+
 
     // Multiple document instances require boundary review first.
-if (selectedDocument.status === "REVIEW") {
-  return (
-    <AppLayout
-      currentPage="document"
-      onNavigate={handleNavigate}
-      userName={user.name}
-      onLogout={handleLogout}
-    >
-      <DocumentBoundaryReview
+
+    if (selectedDocument.status === "REVIEW") {
+      return (
+        <AppLayout
+          currentPage="document"
+          onNavigate={handleNavigate}
+          userName={user.name}
+          userRole={user.role}
+          onLogout={handleLogout}
+        >
+          <DocumentBoundaryReview
   documentId={selectedDocument.id}
   fileName={selectedDocument.fileName}
   mimeType={selectedDocument.mimeType}
@@ -373,20 +480,20 @@ if (selectedDocument.status === "REVIEW") {
     }
   }}
 />
-    </AppLayout>
-  );
-}
+        </AppLayout>
+      );
+    }
 
 
     // Document has no template yet
-    if (
-      !selectedDocument.documentTypeId
-    ) {
+
+    if (!selectedDocument.documentTypeId) {
       return (
         <AppLayout
           currentPage="document"
           onNavigate={handleNavigate}
           userName={user.name}
+          userRole={user.role}
           onLogout={handleLogout}
         >
           <button
@@ -437,11 +544,13 @@ if (selectedDocument.status === "REVIEW") {
 
 
     // Document already has a template
+
     return (
       <AppLayout
         currentPage="document"
         onNavigate={handleNavigate}
         userName={user.name}
+        userRole={user.role}
         onLogout={handleLogout}
       >
         <DocumentForm
@@ -468,6 +577,7 @@ if (selectedDocument.status === "REVIEW") {
         currentPage={currentPage}
         onNavigate={handleNavigate}
         userName={user.name}
+        userRole={user.role}
         onLogout={handleLogout}
       >
         <DocumentList
@@ -490,6 +600,7 @@ if (selectedDocument.status === "REVIEW") {
         currentPage={currentPage}
         onNavigate={handleNavigate}
         userName={user.name}
+        userRole={user.role}
         onLogout={handleLogout}
       >
         <DraftList
@@ -532,6 +643,7 @@ if (selectedDocument.status === "REVIEW") {
         currentPage={currentPage}
         onNavigate={handleNavigate}
         userName={user.name}
+        userRole={user.role}
         onLogout={handleLogout}
       >
         <TemplatePage />
@@ -541,7 +653,7 @@ if (selectedDocument.status === "REVIEW") {
 
 
   // --------------------------------------------------
-  // Dashboard
+  // Default Dashboard
   // --------------------------------------------------
 
   return (
@@ -549,6 +661,7 @@ if (selectedDocument.status === "REVIEW") {
       currentPage="dashboard"
       onNavigate={handleNavigate}
       userName={user.name}
+      userRole={user.role}
       onLogout={handleLogout}
     >
       <Dashboard

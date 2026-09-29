@@ -3,6 +3,7 @@
 model User {
   id        Int     @id @default(autoincrement())
   email     String  @unique
+  role     String @default("USER")
   password  String
   name      String?
   documents Document[]
