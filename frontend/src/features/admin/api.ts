@@ -109,3 +109,49 @@ export async function getAdminDocuments(): Promise<
 
   return data.documents;
 }
+
+
+
+export async function getAdminDocumentTypeJSON(
+  documentTypeId: number
+) {
+  const response = await fetch(
+    `http://localhost:3000/api/admin/document-types/${documentTypeId}/json`,
+    {
+      credentials: "include",
+    }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      result.error ?? "Failed to export document type JSON"
+    );
+  }
+
+  return result;
+}
+
+
+export async function getAdminDocumentTypeCombinedJSON(
+  id: number
+): Promise<unknown> {
+  const response = await fetch(
+    `http://localhost:3000/api/admin/document-types/${id}/json`,
+    {
+      credentials: "include",
+    }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      result.error ??
+        "Failed to get combined document type JSON"
+    );
+  }
+
+  return result;
+}

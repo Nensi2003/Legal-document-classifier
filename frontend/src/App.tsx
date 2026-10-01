@@ -38,6 +38,8 @@ import { AdminUsers } from "./features/admin/AdminUsers";
 
 import { AdminDocuments } from "./features/admin/AdminDocuments";
 
+import { AdminDocumentTypes } from "./features/admin/AdminDocumentTypes";
+
 
 function App() {
   const [showRegister, setShowRegister] =
@@ -275,6 +277,31 @@ if (
       onLogout={handleLogout}
     >
       <AdminDocuments onNavigate={handleNavigate} />
+    </AppLayout>
+  );
+}
+
+// --------------------------------------------------
+// Admin Document Types
+// --------------------------------------------------
+
+if (
+  user.role === "ADMIN" &&
+  currentPage === "admin-document-types"
+) {
+  return (
+    <AppLayout
+      currentPage={currentPage}
+      onNavigate={handleNavigate}
+      userName={user.name}
+      userRole={user.role}
+      onLogout={handleLogout}
+    >
+      <AdminDocumentTypes
+        onBack={() =>
+          handleNavigate("admin-dashboard")
+        }
+      />
     </AppLayout>
   );
 }

@@ -5,6 +5,8 @@ import {
   type DocumentType,
 } from "./api";
 
+import { getAdminDocumentTypeJSON } from "../admin/api";
+
 interface DocumentTypeListProps {
   onEdit: (documentType: DocumentType) => void;
   onDelete: (documentType: DocumentType) => void;
@@ -25,6 +27,9 @@ export function DocumentTypeList({
 
   const [searchQuery, setSearchQuery] =
     useState("");
+
+  const [exportingId, setExportingId] =
+    useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,6 +90,56 @@ export function DocumentTypeList({
           .includes(query)
     );
   }, [documentTypes, searchQuery]);
+
+  async function handleExportJSON(
+    documentType: DocumentType
+  ) {
+    try {
+      setExportingId(documentType.id);
+
+      const data =
+        await getAdminDocumentTypeJSON(
+          documentType.id
+        );
+
+      const blob = new Blob(
+        [JSON.stringify(data, null, 2)],
+        {
+          type: "application/json",
+        }
+      );
+
+      const url =
+        URL.createObjectURL(blob);
+
+      const link =
+        document.createElement("a");
+
+      link.href = url;
+      link.download = `${documentType.name
+        .replace(/[^a-z0-9]+/gi, "_")
+        .toLowerCase()}_combined.json`;
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(
+        "Failed to export JSON:",
+        error
+      );
+
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to export JSON."
+      );
+    } finally {
+      setExportingId(null);
+    }
+  }
 
   if (loading) {
     return (
@@ -328,13 +383,13 @@ export function DocumentTypeList({
                 </div>
 
                 {/* Actions */}
-                <div className="mt-4 flex gap-2">
+                <div className="mt-4 grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() =>
                       onEdit(documentType)
                     }
-                    className="flex-1 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                    className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
                   >
                     Edit
                   </button>
@@ -347,6 +402,25 @@ export function DocumentTypeList({
                     className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
                   >
                     Delete
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleExportJSON(
+                        documentType
+                      )
+                    }
+                    disabled={
+                      exportingId ===
+                      documentType.id
+                    }
+                    className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {exportingId ===
+                    documentType.id
+                      ? "Exporting..."
+                      : "Export Combined JSON"}
                   </button>
                 </div>
               </article>

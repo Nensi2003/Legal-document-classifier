@@ -33,6 +33,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (user.role === "ADMIN") {
+  return NextResponse.json(
+    {
+      error: "Admins cannot upload documents",
+    },
+    { status: 403 }
+  );
+}
+
     // 2. Get uploaded file
     const formData = await request.formData();
     const file = formData.get("file");

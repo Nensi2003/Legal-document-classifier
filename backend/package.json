@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest",
+    "test:run": "vitest run",
     "postinstall": "prisma skills sync || exit 0",
     "contract:emit": "prisma contract emit",
     "seed": "tsx src/prisma/seed.ts"
@@ -41,7 +43,9 @@
     "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "^7.1.7",
+    "vitest": "^5.0.2"
   },
   "packageManager": "yarn@1.22.22"
 }

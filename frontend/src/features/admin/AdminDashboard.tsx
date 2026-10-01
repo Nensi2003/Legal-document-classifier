@@ -122,27 +122,34 @@ export function AdminDashboard({
       </div>
 
       {/* Quick actions */}
-      <div>
-        <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
-          Administration
-        </h2>
+      {/* Quick actions */}
+<div>
+  <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
+    Administration
+  </h2>
 
-        <div className="grid gap-4 md:grid-cols-2">
+  <div className="grid gap-4 md:grid-cols-3">
 
-          <AdminAction
-            title="Users"
-            description="View registered users and their roles."
-            onClick={() => onNavigate("admin-users")}
-          />
+    <AdminAction
+      title="Users"
+      description="View registered users and their roles."
+      onClick={() => onNavigate("admin-users")}
+    />
 
-          <AdminAction
-            title="Documents"
-            description="View and manage uploaded documents."
-            onClick={() => onNavigate("admin-documents")}
-          />
+    <AdminAction
+      title="Documents"
+      description="View and manage uploaded documents."
+      onClick={() => onNavigate("admin-documents")}
+    />
 
-        </div>
-      </div>
+    <AdminAction
+      title="Document Types"
+      description="View document types and export combined JSON data."
+      onClick={() => onNavigate("admin-document-types")}
+    />
+
+  </div>
+</div>
 
       {/* Users preview */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">

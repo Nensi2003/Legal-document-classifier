@@ -42,6 +42,17 @@ export async function PATCH(
   } catch (error) {
     console.error("Error updating field:", error);
 
+    if (
+      error instanceof Error &&
+      error.message ===
+        "A field with this name already exists in this template"
+    ) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Failed to update field" },
       { status: 500 }
