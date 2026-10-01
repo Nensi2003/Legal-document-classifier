@@ -1,52 +1,91 @@
 import { cookies } from "next/headers";
-import {
-    createSession,
-    deleteSession,
-    getUserFromSession,
-} from "../services/authService";
+import { SignJWT, jwtVerify } from "jose";
 
-const SESSION_COOKIE = "session_id";
+const AUTH_COOKIE = "auth_token";
+const JWT_EXPIRES_IN = "7d";
 
-export async function setSessionCookie(userId: number) {
-  const { sessionId, expiresAt } = await createSession(userId);
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+
+  if (!secret) {
+    throw new Error("JWT_SECRET is not configured");
+  }
+
+  return new TextEncoder().encode(secret);
+}
+
+export async function setAuthCookie(user: {
+  id: number;
+  email: string;
+  name: string | null;
+  role: string;
+}) {
+  const token = await new SignJWT({
+    email: user.email,
+    name: user.name,
+    role: user.role,
+  })
+    .setProtectedHeader({
+      alg: "HS256",
+    })
+    .setSubject(String(user.id))
+    .setIssuedAt()
+    .setExpirationTime(JWT_EXPIRES_IN)
+    .sign(getJwtSecret());
 
   const cookieStore = await cookies();
 
-  cookieStore.set(SESSION_COOKIE, sessionId, {
+  cookieStore.set(AUTH_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    expires: new Date(expiresAt),
+    maxAge: 7 * 24 * 60 * 60,
     path: "/",
   });
-
-  return sessionId;
 }
 
-export async function clearSessionCookie() {
+export async function clearAuthCookie() {
   const cookieStore = await cookies();
 
-  const sessionId = cookieStore.get(SESSION_COOKIE)?.value;
-
-  if (sessionId) {
-    await deleteSession(sessionId);
-  }
-
-  cookieStore.delete(SESSION_COOKIE);
+  cookieStore.delete(AUTH_COOKIE);
 }
 
 export async function getCurrentUser() {
   const cookieStore = await cookies();
 
-  const sessionId = cookieStore.get(SESSION_COOKIE)?.value;
+  const token = cookieStore.get(AUTH_COOKIE)?.value;
 
-  if (!sessionId) {
+  if (!token) {
     return null;
   }
 
-  return getUserFromSession(sessionId);
-}
+  try {
+    const { payload } = await jwtVerify(
+      token,
+      getJwtSecret(),
+      {
+        algorithms: ["HS256"],
+      }
+    );
 
+    if (!payload.sub) {
+      return null;
+    }
+
+    return {
+      id: Number(payload.sub),
+      email: String(payload.email),
+      name:
+        payload.name === null ||
+        payload.name === undefined
+          ? null
+          : String(payload.name),
+      role: String(payload.role),
+    };
+  } catch {
+    return null;
+  }
+}
 
 export async function requireAdmin() {
   const user = await getCurrentUser();
