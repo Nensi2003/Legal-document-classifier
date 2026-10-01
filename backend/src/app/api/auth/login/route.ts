@@ -1,4 +1,4 @@
-import { setSessionCookie } from "@/lib/auth";
+import { setAuthCookie } from "@/lib/auth";
 import { loginUser } from "@/services/authService";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     const user = await loginUser(email, password);
 
-    await setSessionCookie(user.id);
+    await setAuthCookie(user);
 
     return NextResponse.json({
       message: "Login successful",
