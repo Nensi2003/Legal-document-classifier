@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { InstancePagePreview } from "./InstancePagePreview";
 
 import {
   getDocumentInstances,
@@ -14,14 +15,18 @@ interface DocumentBoundaryReviewProps {
   documentId: number;
   fileName: string;
   mimeType: string;
+  readOnly?: boolean;
   onConfirmed: () => void;
+  onBackToDocuments: () => void;
 }
 
 export function DocumentBoundaryReview({
   documentId,
   fileName,
-//   mimeType,
-  onConfirmed,   
+  mimeType,
+  readOnly = false,
+  onConfirmed,
+  onBackToDocuments,
 }: DocumentBoundaryReviewProps) {
 
 //     console.log("Boundary review document:", document);
@@ -46,6 +51,7 @@ export function DocumentBoundaryReview({
 
   const [selectedInstanceId, setSelectedInstanceId] =
     useState<number | null>(null);
+  const [instanceView, setInstanceView] = useState<"preview" | "text">("preview");
 
   const sortedInstances = useMemo(
     () =>
@@ -69,6 +75,8 @@ export function DocumentBoundaryReview({
 
         if (!cancelled) {
           setInstances(result);
+          setSelectedInstanceId(result[0]?.id ?? null);
+          setInstanceView("preview");
         }
       } catch (error) {
         if (!cancelled) {
@@ -329,7 +337,7 @@ export function DocumentBoundaryReview({
       <div>
         <button
           type="button"
-          onClick={onConfirmed}
+          onClick={onBackToDocuments}
           disabled={saving}
           className="mb-4 text-sm font-medium text-slate-500 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -356,6 +364,8 @@ export function DocumentBoundaryReview({
           {error}
         </div>
       )}
+
+      {readOnly && <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">Another user is working on this document. You can review the detected pages, but boundary editing is disabled.</p>}
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-6 py-4">
@@ -415,16 +425,29 @@ export function DocumentBoundaryReview({
                       )}
                     </div>
 
-                    {instance.extractedText && (
-                      <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                          Extracted text
-                        </p>
-
-                        <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-sm leading-6 text-slate-600">
-                          {instance.extractedText}
-                        </p>
-                      </div>
+                    {isSelected && (
+                      <section className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-3">
+                          <div className="flex gap-2" aria-label={`Instance ${instance.position} preview options`}>
+                            <button type="button" onClick={() => setInstanceView("preview")} aria-pressed={instanceView === "preview"} className={`rounded-lg px-3 py-2 text-xs font-semibold ${instanceView === "preview" ? "bg-slate-900 text-white" : "border border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                              Document preview
+                            </button>
+                            <button type="button" onClick={() => setInstanceView("text")} aria-pressed={instanceView === "text"} className={`rounded-lg px-3 py-2 text-xs font-semibold ${instanceView === "text" ? "bg-slate-900 text-white" : "border border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                              Extracted text
+                            </button>
+                          </div>
+                          <span className="text-xs text-slate-500">Pages {instance.startPage}–{instance.endPage}</span>
+                        </div>
+                        <div className="max-h-[650px] overflow-auto bg-slate-50">
+                          {instanceView === "preview" ? (
+                            <InstancePagePreview key={`${instance.id}-${instance.startPage}-${instance.endPage}`} documentId={documentId} instanceId={instance.id} fileName={fileName} mimeType={mimeType} startPage={instance.startPage} endPage={instance.endPage} />
+                          ) : instance.extractedText ? (
+                            <pre className="min-h-48 whitespace-pre-wrap break-words p-5 font-mono text-xs leading-6 text-slate-600">{instance.extractedText}</pre>
+                          ) : (
+                            <p className="p-6 text-sm text-slate-500">No extracted text is available for this instance.</p>
+                          )}
+                        </div>
+                      </section>
                     )}
 
                     {isEditing && (
@@ -441,6 +464,7 @@ export function DocumentBoundaryReview({
 
                             <input
                               type="number"
+                              disabled={readOnly}
                               min={1}
                               value={startPage}
                               onChange={(event) =>
@@ -459,6 +483,7 @@ export function DocumentBoundaryReview({
 
                             <input
                               type="number"
+                              disabled={readOnly}
                               min={1}
                               value={endPage}
                               onChange={(event) =>
@@ -473,7 +498,7 @@ export function DocumentBoundaryReview({
                           <button
                             type="button"
                             onClick={handleSaveBoundary}
-                            disabled={saving}
+                            disabled={readOnly || saving}
                             className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Save
@@ -482,7 +507,7 @@ export function DocumentBoundaryReview({
                           <button
                             type="button"
                             onClick={cancelEditing}
-                            disabled={saving}
+                            disabled={readOnly || saving}
                             className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Cancel
@@ -510,6 +535,7 @@ export function DocumentBoundaryReview({
 
                             <input
                               type="number"
+                              disabled={readOnly}
                               min={
                                 instance.startPage + 1
                               }
@@ -527,7 +553,7 @@ export function DocumentBoundaryReview({
                           <button
                             type="button"
                             onClick={handleSplit}
-                            disabled={saving}
+                            disabled={readOnly || saving}
                             className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Split
@@ -536,7 +562,7 @@ export function DocumentBoundaryReview({
                           <button
                             type="button"
                             onClick={cancelSplitting}
-                            disabled={saving}
+                            disabled={readOnly || saving}
                             className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Cancel
@@ -550,11 +576,8 @@ export function DocumentBoundaryReview({
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedInstanceId(
-                          isSelected
-                            ? null
-                            : instance.id
-                        );
+                        setSelectedInstanceId(isSelected ? null : instance.id);
+                        setInstanceView("preview");
                       }}
                       className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                     >
@@ -568,7 +591,7 @@ export function DocumentBoundaryReview({
                       onClick={() =>
                         startEditing(instance)
                       }
-                      disabled={saving}
+                      disabled={readOnly || saving}
                       className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Edit pages
@@ -581,7 +604,7 @@ export function DocumentBoundaryReview({
                         onClick={() =>
                           startSplitting(instance)
                         }
-                        disabled={saving}
+                        disabled={readOnly || saving}
                         className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         Split
@@ -597,7 +620,7 @@ export function DocumentBoundaryReview({
                             nextInstance
                           )
                         }
-                        disabled={saving}
+                        disabled={readOnly || saving}
                         className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         Merge with next
@@ -626,7 +649,7 @@ export function DocumentBoundaryReview({
         <button
           type="button"
           onClick={handleConfirm}
-          disabled={saving || instances.length < 2}
+          disabled={readOnly || saving || instances.length < 2}
           className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {saving

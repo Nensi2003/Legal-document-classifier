@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { registerUser } from "@/services/authService";
-import { setSessionCookie } from "@/lib/auth";
+import { setAuthCookie } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       name
     );
 
-    await setSessionCookie(user.id);
+    await setAuthCookie(user);
 
     return NextResponse.json(
       {

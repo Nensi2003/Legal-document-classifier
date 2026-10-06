@@ -4,6 +4,11 @@ export interface DocumentType {
   domain: string;
   description?: string | null;
   jsonSchema: unknown;
+  documentTypeVersionId?: number | null;
+  versionNumber?: number | null;
+  versionStatus?: string | null;
+  activeVersion?: { id: number; versionNumber: number; status: string } | null;
+  draftVersion?: { id: number; versionNumber: number; status: string } | null;
 }
 
 export interface Field {
@@ -31,10 +36,16 @@ export async function getDocumentTypes(): Promise<DocumentType[]> {
 }
 
 export async function getDocumentTypeById(
-  id: number
+  id: number,
+  versionId?: number | null,
+  includeDraft = false,
 ): Promise<DocumentType> {
+  const query = new URLSearchParams();
+  if (versionId) query.set("versionId", String(versionId));
+  if (includeDraft) query.set("includeDraft", "true");
+  const suffix = query.size ? `?${query.toString()}` : "";
   const response = await fetch(
-    `http://localhost:3000/api/document-types/${id}`,
+    `http://localhost:3000/api/document-types/${id}${suffix}`,
     {
       credentials: "include",
     }
@@ -45,6 +56,16 @@ export async function getDocumentTypeById(
   }
 
   return response.json();
+}
+
+export async function publishDocumentTypeVersion(documentTypeId: number, versionId: number) {
+  const response = await fetch(
+    `http://localhost:3000/api/document-types/${documentTypeId}/versions/${versionId}/publish`,
+    { method: "POST", credentials: "include" },
+  );
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error ?? "Failed to publish template version");
+  return result;
 }
 
 export async function createDocumentType(data: {
@@ -130,10 +151,12 @@ export async function deleteDocumentType(
 }
 
 export async function getFields(
-  documentTypeId: number
+  documentTypeId: number,
+  versionId?: number | null,
 ): Promise<Field[]> {
+  const query = versionId ? `?versionId=${encodeURIComponent(versionId)}` : "";
   const response = await fetch(
-    `http://localhost:3000/api/document-types/${documentTypeId}/fields`,
+    `http://localhost:3000/api/document-types/${documentTypeId}/fields${query}`,
     {
       credentials: "include",
     }

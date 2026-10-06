@@ -1,6 +1,9 @@
 import { db } from "@/prisma/db";
 import type { JsonValue } from "@prisma/orm-postgres/target/codec-types";
 import { validateJSON } from "./jsonValidationService";
+import { getAccessibleDocumentById } from "./documentAccessService";
+import { assertDocumentClaim } from "./documentClaimService";
+import { publishDocumentEvent } from "@/realtime/publisher";
 
 /**
  * Generate JSON for a single document that has no DocumentInstance records.
@@ -12,17 +15,13 @@ export async function generateDocumentJSON(
   documentId: number,
   userId: number
 ) {
-  const document =
-    await db.orm.public.Document
-      .where({
-        id: documentId,
-        userId,
-      })
-      .first();
+  const document = await getAccessibleDocumentById(documentId, userId);
 
   if (!document) {
     throw new Error("Document not found");
   }
+  const claim = await assertDocumentClaim(documentId, userId);
+  if (!claim.allowed) throw new Error(claim.error);
 
   if (!document.documentTypeId) {
     throw new Error("Document type has not been selected");
@@ -49,21 +48,22 @@ export async function generateDocumentJSON(
     );
   }
 
-  const documentType =
-    await db.orm.public.DocumentType
+  if (!document.documentTypeVersionId) throw new Error("Document type version has not been selected");
+  const documentTypeVersion =
+    await db.orm.public.DocumentTypeVersion
       .where({
-        id: document.documentTypeId,
+        id: document.documentTypeVersionId,
       })
       .first();
 
-  if (!documentType) {
-    throw new Error("Document type not found");
+  if (!documentTypeVersion) {
+    throw new Error("Document type version not found");
   }
 
   const validation =
     validateJSON(
       document.draftData as JsonValue,
-      documentType.jsonSchema
+      documentTypeVersion.jsonSchema
     );
 
   if (!validation.valid) {
@@ -103,13 +103,16 @@ export async function generateDocumentJSON(
 
   // A single document is completed once its JSON is generated.
   await db.orm.public.Document
-    .where({
-      id: documentId,
-      userId,
-    })
+    .where({ id: documentId })
     .update({
       status: "COMPLETED",
+      activeWorkerId: null,
+      claimExpiresAt: null,
     });
+
+  publishDocumentEvent("DOCUMENT_JSON_UPDATED", documentId, userId, { status: "COMPLETED" });
+  publishDocumentEvent("DOCUMENT_COMPLETED", documentId, userId, { status: "COMPLETED" });
+  publishDocumentEvent("DOCUMENT_RELEASED", documentId, userId, {});
 
   return {
     valid: true,
@@ -128,17 +131,13 @@ export async function generateInstanceJSON(
   instanceId: number,
   userId: number
 ) {
-  const document =
-    await db.orm.public.Document
-      .where({
-        id: documentId,
-        userId,
-      })
-      .first();
+  const document = await getAccessibleDocumentById(documentId, userId);
 
   if (!document) {
     throw new Error("Document not found");
   }
+  const claim = await assertDocumentClaim(documentId, userId);
+  if (!claim.allowed) throw new Error(claim.error);
 
   if (!document.documentTypeId) {
     throw new Error("Document type has not been selected");
@@ -162,21 +161,22 @@ export async function generateInstanceJSON(
     );
   }
 
-  const documentType =
-    await db.orm.public.DocumentType
+  if (!document.documentTypeVersionId) throw new Error("Document type version has not been selected");
+  const documentTypeVersion =
+    await db.orm.public.DocumentTypeVersion
       .where({
-        id: document.documentTypeId,
+        id: document.documentTypeVersionId,
       })
       .first();
 
-  if (!documentType) {
-    throw new Error("Document type not found");
+  if (!documentTypeVersion) {
+    throw new Error("Document type version not found");
   }
 
   const validation =
     validateJSON(
       instance.draftData,
-      documentType.jsonSchema
+      documentTypeVersion.jsonSchema
     );
 
   if (!validation.valid) {
@@ -197,6 +197,8 @@ export async function generateInstanceJSON(
         status: "COMPLETED",
       });
 
+  publishDocumentEvent("DOCUMENT_JSON_UPDATED", documentId, userId, { instanceId, status: "COMPLETED" });
+
   return {
     valid: true,
     instance: updatedInstance,
@@ -213,32 +215,31 @@ export async function generateCombinedJSON(
   documentId: number,
   userId: number
 ) {
-  const document =
-    await db.orm.public.Document
-      .where({
-        id: documentId,
-        userId,
-      })
-      .first();
+  const document = await getAccessibleDocumentById(documentId, userId);
 
   if (!document) {
     throw new Error("Document not found");
   }
+  const claim = await assertDocumentClaim(documentId, userId);
+  if (!claim.allowed) throw new Error(claim.error);
 
   if (!document.documentTypeId) {
     throw new Error("Document type has not been selected");
   }
 
-  const documentType =
-    await db.orm.public.DocumentType
+  if (!document.documentTypeVersionId) throw new Error("Document type version has not been selected");
+  const documentTypeVersion =
+    await db.orm.public.DocumentTypeVersion
       .where({
-        id: document.documentTypeId,
+        id: document.documentTypeVersionId,
       })
       .first();
 
-  if (!documentType) {
-    throw new Error("Document type not found");
+  if (!documentTypeVersion) {
+    throw new Error("Document type version not found");
   }
+  const documentType = await db.orm.public.DocumentType.where({ id: document.documentTypeId }).first();
+  if (!documentType) throw new Error("Document type not found");
 
   const instances =
     await db.orm.public.DocumentInstance
@@ -276,7 +277,7 @@ export async function generateCombinedJSON(
     const validation =
       validateJSON(
         instance.draftData as JsonValue,
-        documentType.jsonSchema
+        documentTypeVersion.jsonSchema
       );
 
     if (!validation.valid) {
@@ -332,13 +333,16 @@ if (existingJSON) {
 // A multi-instance document is completed once
 // the combined JSON is successfully generated.
 await db.orm.public.Document
-  .where({
-    id: documentId,
-    userId,
-  })
+  .where({ id: documentId })
   .update({
     status: "COMPLETED",
+    activeWorkerId: null,
+    claimExpiresAt: null,
   });
+
+publishDocumentEvent("DOCUMENT_JSON_UPDATED", documentId, userId, { status: "COMPLETED" });
+publishDocumentEvent("DOCUMENT_COMPLETED", documentId, userId, { status: "COMPLETED" });
+publishDocumentEvent("DOCUMENT_RELEASED", documentId, userId, {});
 
 return {
   valid: true,

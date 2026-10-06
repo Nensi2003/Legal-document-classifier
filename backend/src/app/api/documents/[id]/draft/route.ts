@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/prisma/db";
+import { getAccessibleDocumentById } from "@/services/documentAccessService";
+import { publishDocumentEvent } from "@/realtime/publisher";
+import { assertDocumentClaim } from "@/services/documentClaimService";
 
 export async function PATCH(
   request: NextRequest,
@@ -31,20 +34,16 @@ export async function PATCH(
     if (
       !body ||
       typeof body !== "object" ||
-      body.draftData === undefined
+      body.draftData === undefined ||
+      typeof body.expectedUpdatedAt !== "string"
     ) {
       return NextResponse.json(
-        { error: "draftData is required" },
+        { error: "draftData and expectedUpdatedAt are required" },
         { status: 400 }
       );
     }
 
-    const document = await db.orm.public.Document
-      .where({
-        id: documentId,
-        userId: user.id,
-      })
-      .first();
+    const document = await getAccessibleDocumentById(documentId, user.id);
 
     if (!document) {
       return NextResponse.json(
@@ -53,21 +52,28 @@ export async function PATCH(
       );
     }
 
+    const claim = await assertDocumentClaim(documentId, user.id);
+    if (!claim.allowed) return NextResponse.json({ error: claim.error }, { status: claim.status });
+
     const updatedDocument = await db.orm.public.Document
-      .where({
-        id: documentId,
-        userId: user.id,
-      })
+      .where({ id: documentId, updatedAt: body.expectedUpdatedAt, activeWorkerId: user.id, claimExpiresAt: document.claimExpiresAt })
       .update({
         draftData: body.draftData,
         status: "DRAFT",
       });
+
+    if (!updatedDocument) return NextResponse.json({ error: "This document changed in another session. Reload it before saving again." }, { status: 409 });
+    publishDocumentEvent("DOCUMENT_UPDATED", documentId, user.id, { status: "DRAFT" });
+    if (document.status !== "DRAFT") {
+      publishDocumentEvent("DOCUMENT_STATUS_CHANGED", documentId, user.id, { previousStatus: document.status, status: "DRAFT" });
+    }
 
     return NextResponse.json({
       message: "Draft saved successfully",
       documentId,
       status: "DRAFT",
       draftData: body.draftData,
+      updatedAt: updatedDocument.updatedAt,
       document: updatedDocument,
     });
   } catch (error) {
@@ -104,12 +110,7 @@ export async function GET(
       );
     }
 
-    const document = await db.orm.public.Document
-      .where({
-        id: documentId,
-        userId: user.id,
-      })
-      .first();
+    const document = await getAccessibleDocumentById(documentId, user.id);
 
     if (!document) {
       return NextResponse.json(
@@ -122,6 +123,7 @@ export async function GET(
       documentId: document.id,
       status: document.status,
       draftData: document.draftData,
+      updatedAt: document.updatedAt,
     });
   } catch (error) {
     console.error("Error getting draft:", error);

@@ -8,6 +8,7 @@ import { db } from "@/prisma/db";
 import { createDocument } from "@/services/documentService";
 import { parseDocument } from "@/parsers/documentParser";
 import { classifyAndMatchDocument } from "@/services/classificationService";
+import { publishAvailableEvent } from "@/realtime/publisher";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const MAX_BATCH_SIZE = 100;
@@ -36,11 +37,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const batch = await db.orm.public.Batch.create({
-  userId: user.id,
-  status: "ACTIVE",
-});
-
     // 2. Get uploaded files
     const formData = await request.formData();
     const files = formData.getAll("files");
@@ -63,6 +59,28 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    let selectedTypeId: number | undefined;
+    let selectedVersionId: number | undefined;
+    const requestedTypeId = formData.get("documentTypeId");
+    if (requestedTypeId) {
+      selectedTypeId = Number(requestedTypeId);
+      if (!Number.isInteger(selectedTypeId) || selectedTypeId <= 0) {
+        return NextResponse.json({ error: "Invalid document type ID" }, { status: 400 });
+      }
+      const activeVersion = await db.orm.public.DocumentTypeVersion
+        .where({ documentTypeId: selectedTypeId, status: "ACTIVE" }).first();
+      if (!activeVersion) {
+        return NextResponse.json({ error: "Document type has no active version" }, { status: 400 });
+      }
+      selectedVersionId = activeVersion.id;
+    }
+
+    const isAdminUpload = user.role === "ADMIN";
+    const batch = await db.orm.public.Batch.create({
+      userId: user.id,
+      status: isAdminUpload ? "AVAILABLE" : "ACTIVE",
+    });
 
     // 4. Create uploads directory
     const uploadDirectory = path.join(
@@ -147,7 +165,32 @@ export async function POST(request: NextRequest) {
   mimeType: file.type,
   userId: user.id,
   batchId: batch.id,
+  documentTypeId: selectedTypeId,
+  documentTypeVersionId: selectedVersionId,
+  status: isAdminUpload ? "AVAILABLE" : "PENDING",
 });
+
+        if (isAdminUpload) {
+          publishAvailableEvent(document.id, user.id, {
+            fileName: document.fileName,
+            status: "AVAILABLE",
+            createdAt: document.createdAt,
+            batchId: batch.id,
+          });
+          results.push({
+            document: {
+              id: document.id,
+              fileName: document.fileName,
+              mimeType: document.mimeType,
+              status: "AVAILABLE",
+              parseStatus: document.parseStatus,
+            },
+            success: true,
+            status: "AVAILABLE",
+            batchId: batch.id,
+          });
+          continue;
+        }
 
         // 11. Parse document
         const parsed =
@@ -217,7 +260,9 @@ export async function POST(request: NextRequest) {
 
      return NextResponse.json(
       {
-        message: "Batch upload completed.",
+        message: isAdminUpload
+          ? "Documents published to the Available Documents queue."
+          : "Batch upload completed.",
         batchId: batch.id,
         total: files.length,
         successful,

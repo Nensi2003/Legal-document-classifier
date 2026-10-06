@@ -1,6 +1,8 @@
 import {
     deleteDocumentType,
+    DocumentTypeInUseError,
     getDocumentTypeById,
+    getDocumentTypeWithVersion,
     updateDocumentType,
 } from "@/services/documentTypeService";
 import { NextRequest, NextResponse } from "next/server";
@@ -20,7 +22,13 @@ export async function GET(
       );
     }
 
-    const documentType = await getDocumentTypeById(documentTypeId);
+    const versionParam = request.nextUrl.searchParams.get("versionId");
+    const versionId = versionParam === null ? undefined : Number(versionParam);
+    if (versionParam !== null && (!Number.isInteger(versionId) || versionId! <= 0)) {
+      return NextResponse.json({ error: "Invalid document type version ID" }, { status: 400 });
+    }
+    const includeDraft = request.nextUrl.searchParams.get("includeDraft") === "true";
+    const documentType = await getDocumentTypeWithVersion(documentTypeId, versionId, includeDraft);
 
     if (!documentType) {
       return NextResponse.json(
@@ -120,6 +128,10 @@ export async function DELETE(
     });
   } catch (error) {
     console.error("Error deleting document type:", error);
+
+    if (error instanceof DocumentTypeInUseError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
 
     return NextResponse.json(
       { error: "Failed to delete document type" },

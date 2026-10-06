@@ -2,6 +2,7 @@ export interface DraftResponse {
   documentId: number;
   status: string;
   draftData: Record<string, unknown> | null;
+  updatedAt: string;
 }
 
 export async function getDraft(
@@ -23,7 +24,8 @@ export async function getDraft(
 
 export async function saveDraft(
   documentId: number,
-  draftData: Record<string, unknown>
+  draftData: Record<string, unknown>,
+  expectedUpdatedAt: string
 ): Promise<DraftResponse> {
   const response = await fetch(
     `http://localhost:3000/api/documents/${documentId}/draft`,
@@ -35,12 +37,14 @@ export async function saveDraft(
       credentials: "include",
       body: JSON.stringify({
         draftData,
+        expectedUpdatedAt,
       }),
     }
   );
 
   if (!response.ok) {
-    throw new Error("Failed to save draft");
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result.error ?? "Failed to save draft");
   }
 
   return response.json();

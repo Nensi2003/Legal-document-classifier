@@ -25,8 +25,7 @@ export function DocumentPreview({
   fileName,
   mimeType,
 }: DocumentPreviewProps) {
-  const fileUrl =
-    `http://localhost:3000/api/documents/${documentId}/file`;
+  const fileUrl = `http://localhost:3000/api/documents/${documentId}/file`;
 
   /*
    * ---------------------------------------------------------
@@ -110,7 +109,7 @@ const needsPreviewApi =
       <iframe
         src={fileUrl}
         title={fileName}
-        className="h-full min-h-[650px] w-full border-0 bg-white"
+        className="h-[650px] w-full border-0 bg-white"
       />
     );
   }
@@ -344,6 +343,14 @@ const needsPreviewApi =
           This document format cannot be displayed
           in the preview.
         </p>
+        <a
+          href={fileUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-4 inline-flex rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+        >
+          Open or download original file
+        </a>
 
       </div>
 

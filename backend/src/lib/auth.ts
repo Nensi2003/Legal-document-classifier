@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 
-const AUTH_COOKIE = "auth_token";
+export const AUTH_COOKIE = "auth_token";
 const JWT_EXPIRES_IN = "7d";
 
 function getJwtSecret() {
@@ -50,6 +50,22 @@ export async function clearAuthCookie() {
   cookieStore.delete(AUTH_COOKIE);
 }
 
+/** Verify the same HTTP-only JWT used by REST requests, outside Next request context. */
+export async function verifyAuthToken(token: string) {
+  try {
+    const { payload } = await jwtVerify(token, getJwtSecret(), { algorithms: ["HS256"] });
+    if (!payload.sub) return null;
+    return {
+      id: Number(payload.sub),
+      email: String(payload.email),
+      name: payload.name == null ? null : String(payload.name),
+      role: String(payload.role),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function getCurrentUser() {
   const cookieStore = await cookies();
 
@@ -59,32 +75,7 @@ export async function getCurrentUser() {
     return null;
   }
 
-  try {
-    const { payload } = await jwtVerify(
-      token,
-      getJwtSecret(),
-      {
-        algorithms: ["HS256"],
-      }
-    );
-
-    if (!payload.sub) {
-      return null;
-    }
-
-    return {
-      id: Number(payload.sub),
-      email: String(payload.email),
-      name:
-        payload.name === null ||
-        payload.name === undefined
-          ? null
-          : String(payload.name),
-      role: String(payload.role),
-    };
-  } catch {
-    return null;
-  }
+  return verifyAuthToken(token);
 }
 
 export async function requireAdmin() {

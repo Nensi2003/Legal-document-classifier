@@ -1,82 +1,77 @@
-# Legal Document Classifier & JSON Generator
+# Legal Document Classifier
 
-A full-stack web application that transforms unstructured documents into structured, validated JSON.
+A web application for uploading legal documents, extracting and reviewing their contents, and generating structured JSON from versioned templates.
 
 ## Features
 
-- Upload PDF, DOCX, CSV, and images
-- Text extraction and OCR
-- Rule-based document type classification
-- Dynamic forms generated from JSON Schema
-- JSON Schema validation with AJV
-- Persistent document drafts
-- Authentication and user-based authorization
-- Admin dashboard for managing users and documents
-- Document and extracted-text preview
-- PostgreSQL database
+- Upload individual documents or publish batches for users to process
+- Extract text from PDF, DOCX, CSV, and image files, with OCR for supported scans
+- Review detected document boundaries and inspect source pages
+- Create versioned document templates and generate schema-validated JSON
+- Save drafts and resume document processing
+- See document availability and active workers through real-time updates
+- Manage users, published documents, and templates through the admin interface
 
 ## Tech Stack
 
-**Frontend:** React, TypeScript, Vite, Tailwind CSS  
-**Backend:** Next.js, TypeScript, REST API  
-**Database:** PostgreSQL, Prisma  
-**Processing:** unpdf, Mammoth, csv-parse, Tesseract.js  
-**Validation:** JSON Schema, AJV  
-**Infrastructure:** Docker
+- **Frontend:** React, TypeScript, Vite, Tailwind CSS
+- **Backend:** Next.js, TypeScript, REST API, WebSockets
+- **Database:** PostgreSQL, Prisma
+- **Document processing:** Mammoth, unpdf, csv-parse, Tesseract.js, LibreOffice, Poppler
+- **Validation:** JSON Schema, AJV
+- **Development environment:** Docker Compose
 
 ## Running the Application
 
-The application uses Docker for the PostgreSQL database and backend, while the frontend runs locally using Vite.
+1. Install and start Docker Desktop.
+2. In the project root, make sure `.env` contains a `JWT_SECRET` value. Keep `.env` local; it is ignored by Git.
+3. Build and start PostgreSQL, the backend, and the frontend:
 
-### 1. Start PostgreSQL and Backend
+   ```bash
+   docker compose up --build -d
+   ```
 
-From the project root:
+4. On a **new, empty database only**, initialize the schema and add the sample document templates:
 
-```bash
-docker compose up --build
-```
+   ```bash
+   docker compose exec backend npx prisma db init
+   docker compose exec backend yarn seed
+   ```
 
-This starts:
+   Skip this step if your Docker database already has the application schema and data.
 
-- PostgreSQL database
-- Next.js backend
+5. Check that the services are running:
 
-```
+   ```bash
+   docker compose ps
+   ```
 
-### 2. Start the Frontend
+6. Open the frontend at `http://localhost:5173` and register an account or sign in.
 
-Open a **new terminal** and run:
-
-```bash
-cd frontend
-yarn install
-yarn dev
-```
-
-```
-
-## Development Setup
-
-If the Docker containers have already been built, you can start them without rebuilding:
-
-```bash
-docker compose up
-```
-
-Then, in a separate terminal:
-
-```bash
-cd frontend
-yarn dev
-```
+To follow service logs, run `docker compose logs -f backend frontend`. Stop the application with `docker compose down`; this keeps the PostgreSQL data volume.
 
 ## Project Structure
 
 ```text
 legal-document-classifier/
-├── backend/          # Next.js backend and REST API
-├── frontend/         # React + Vite frontend
-├── docker-compose.yml
+├── backend/
+│   ├── migrations/             # Database migration history
+│   ├── src/
+│   │   ├── app/api/             # REST API routes
+│   │   ├── classification/      # Document type detection
+│   │   ├── detection/           # Page and boundary detection
+│   │   ├── parsers/             # PDF, DOCX, CSV, and image extraction
+│   │   ├── prisma/              # Database contract and seed data
+│   │   ├── realtime/            # WebSocket events and connections
+│   │   ├── services/            # Document, template, and user logic
+│   │   └── test/                # Backend tests
+│   └── realtime-server.ts       # Backend and WebSocket server entry point
+├── frontend/
+│   └── src/
+│       ├── features/            # Admin, auth, dashboard, templates, documents
+│       ├── test/                # Frontend tests
+│       └── App.tsx              # Main application and screen navigation
+├── docker-compose.yml           # PostgreSQL, backend, and frontend services
 └── README.md
 ```
 
@@ -84,6 +79,6 @@ legal-document-classifier/
 
 | Service | URL |
 |---|---|
-| Frontend | http://localhost:5173 |
-| Backend | http://localhost:3000 |
-| PostgreSQL | localhost:5432 |
+| Frontend | [http://localhost:5173](http://localhost:5173) |
+| Backend API | [http://localhost:3000](http://localhost:3000) |
+| PostgreSQL | `localhost:5432` — database `legal_documents`, user `postgres` |

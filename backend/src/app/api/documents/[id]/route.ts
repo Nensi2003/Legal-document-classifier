@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth";
-import { db } from "@/prisma/db";
 import { deleteDocument } from "@/services/documentService";
+import { getAccessibleDocumentById } from "@/services/documentAccessService";
+import { publishDocumentEvent } from "@/realtime/publisher";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -34,12 +35,7 @@ export async function GET(
     }
 
     // 3. Find document belonging to current user
-    const document = await db.orm.public.Document
-      .where({
-        id: documentId,
-        userId: user.id,
-      })
-      .first();
+    const document = await getAccessibleDocumentById(documentId, user.id);
 
     // 4. Document doesn't exist or doesn't belong to user
     if (!document) {
@@ -52,9 +48,9 @@ export async function GET(
     }
 
     // 5. Return document
-    return NextResponse.json({
-      document,
-    });
+    const activeWorker = document.activeWorkerId == null || !document.claimExpiresAt || new Date(document.claimExpiresAt).getTime() <= Date.now()
+      ? null : await (await import("@/prisma/db")).db.orm.public.User.where({ id: document.activeWorkerId }).first();
+    return NextResponse.json({ document: { ...document, activeWorkerName: activeWorker?.name ?? null } });
   } catch (error) {
     console.error("Get document error:", error);
 
@@ -102,6 +98,8 @@ export async function DELETE(
         { status: 404 }
       );
     }
+
+    publishDocumentEvent("DOCUMENT_DELETED", documentId, user.id, { fileName: document.fileName });
 
     return NextResponse.json({
       message: "Document deleted successfully",

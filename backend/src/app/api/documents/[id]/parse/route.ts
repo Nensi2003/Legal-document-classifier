@@ -7,6 +7,9 @@ import { db } from "@/prisma/db";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getStoredFilePath } from "@/lib/fileStorage";
+import { getAccessibleDocumentById } from "@/services/documentAccessService";
+import { publishDocumentEvent } from "@/realtime/publisher";
+import { assertDocumentClaim } from "@/services/documentClaimService";
 
 export const runtime = "nodejs";
 
@@ -34,12 +37,7 @@ export async function POST(
       );
     }
 
-    const document = await db.orm.public.Document
-      .where({
-        id: documentId,
-        userId: user.id,
-      })
-      .first();
+    const document = await getAccessibleDocumentById(documentId, user.id);
 
     if (!document) {
       return NextResponse.json(
@@ -47,6 +45,8 @@ export async function POST(
         { status: 404 }
       );
     }
+    const claim = await assertDocumentClaim(documentId, user.id);
+    if (!claim.allowed) return NextResponse.json({ error: claim.error }, { status: claim.status });
 
     try {
   const filePath = getStoredFilePath(document.filePath);
@@ -71,6 +71,7 @@ export async function POST(
               "The document was opened successfully, but no extractable text was found.",
           });
 
+        publishDocumentEvent("DOCUMENT_UPDATED", document.id, user.id, { parseStatus: "NO_TEXT" });
         return NextResponse.json({
           analysisStatus: "NO_TEXT",
           message:
@@ -216,10 +217,7 @@ if (remainingInstances.length > 0) {
 
         if (instances.length > 1) {
           await db.orm.public.Document
-            .where({
-              id: document.id,
-              userId: user.id,
-            })
+            .where({ id: document.id })
             .update({
               status: "REVIEW",
             });
@@ -240,6 +238,12 @@ if (remainingInstances.length > 0) {
         await classifyAndMatchDocument(
           parsedDocument.text
         );
+
+      const resultingStatus = instances.length > 1 ? "REVIEW" : document.status;
+      publishDocumentEvent("DOCUMENT_UPDATED", document.id, user.id, { parseStatus: "SUCCESS", status: resultingStatus });
+      if (resultingStatus !== document.status) {
+        publishDocumentEvent("DOCUMENT_STATUS_CHANGED", document.id, user.id, { previousStatus: document.status, status: resultingStatus });
+      }
 
       return NextResponse.json({
         analysisStatus: "SUCCESS",
@@ -275,6 +279,7 @@ if (remainingInstances.length > 0) {
               "This document format cannot currently be analyzed automatically.",
           });
 
+        publishDocumentEvent("DOCUMENT_UPDATED", document.id, user.id, { parseStatus: "UNSUPPORTED" });
         return NextResponse.json({
           analysisStatus: "UNSUPPORTED",
           message:
@@ -303,6 +308,7 @@ if (remainingInstances.length > 0) {
           parseMessage:
             "The document could not be analyzed automatically.",
         });
+      publishDocumentEvent("DOCUMENT_UPDATED", document.id, user.id, { parseStatus: "FAILED" });
 
       return NextResponse.json({
         analysisStatus: "FAILED",

@@ -109,6 +109,20 @@ describe("Document Type API", () => {
       expect(result).toEqual(mockDocumentType);
     });
 
+    it("requests the document type schema for the document's pinned version", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 1, jsonSchema: { type: "object", properties: {} }, versionNumber: 1 }),
+      }));
+
+      await getDocumentTypeById(1, 7);
+
+      expect(fetch).toHaveBeenCalledWith(
+        "http://localhost:3000/api/document-types/1?versionId=7",
+        { credentials: "include" },
+      );
+    });
+
     it("throws when getting a document type fails", async () => {
       vi.stubGlobal(
         "fetch",

@@ -5,7 +5,16 @@ export interface Document {
   mimeType: string;
 
   documentTypeId?: number | null;
+  documentTypeVersionId?: number | null;
   documentTypeName?: string | null;
+  uploaderName?: string | null;
+  uploaderId?: number;
+  uploaderRole?: string | null;
+  activeWorkerId?: number | null;
+  activeWorkerName?: string | null;
+  claimExpiresAt?: string | null;
+  isUploadedByCurrentUser?: boolean;
+  isAvailableToUser?: boolean;
 
   status: string;
 
@@ -16,6 +25,7 @@ export interface Document {
   draftData?: Record<string, unknown> | null;
 
   createdAt: string;
+  updatedAt?: string;
 }
 
 export async function getDocumentById(
@@ -35,6 +45,18 @@ export async function getDocumentById(
   const result = await response.json();
 
 return result.document;
+}
+
+/** Claim a document before requesting processing or opening editing controls. */
+export async function claimDocument(documentId: number): Promise<boolean> {
+  const response = await fetch(`http://localhost:3000/api/documents/${documentId}/claim`, {
+    method: "POST",
+    credentials: "include",
+  });
+  const result = await response.json();
+  if (response.status === 409) return false;
+  if (!response.ok) throw new Error(result.error ?? "Failed to claim document");
+  return true;
 }
 
 export async function assignDocumentType(
@@ -68,11 +90,13 @@ export async function assignDocumentType(
 }
 
 export async function uploadDocument(
-  file: File
+  file: File,
+  documentTypeId?: number,
 ): Promise<Document> {
   const formData = new FormData();
 
   formData.append("file", file);
+  if (documentTypeId) formData.append("documentTypeId", String(documentTypeId));
 
   const response = await fetch(
     "http://localhost:3000/api/documents",

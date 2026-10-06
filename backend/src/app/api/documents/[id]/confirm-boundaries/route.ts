@@ -1,6 +1,9 @@
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/prisma/db";
+import { getAccessibleDocumentById } from "@/services/documentAccessService";
 import { NextRequest, NextResponse } from "next/server";
+import { publishDocumentEvent } from "@/realtime/publisher";
+import { assertDocumentClaim } from "@/services/documentClaimService";
 
 export const runtime = "nodejs";
 
@@ -30,13 +33,7 @@ export async function POST(
       );
     }
 
-    const document =
-      await db.orm.public.Document
-        .where({
-          id: documentId,
-          userId: user.id,
-        })
-        .first();
+    const document = await getAccessibleDocumentById(documentId, user.id);
 
     if (!document) {
       return NextResponse.json(
@@ -44,6 +41,8 @@ export async function POST(
         { status: 404 }
       );
     }
+    const claim = await assertDocumentClaim(documentId, user.id);
+    if (!claim.allowed) return NextResponse.json({ error: claim.error }, { status: claim.status });
 
     if (document.status !== "REVIEW") {
       return NextResponse.json(
@@ -74,10 +73,7 @@ export async function POST(
 
     const updatedDocument =
       await db.orm.public.Document
-        .where({
-          id: documentId,
-          userId: user.id,
-        })
+        .where({ id: documentId })
         .update({
           status: "DRAFT",
         });
@@ -88,6 +84,8 @@ export async function POST(
         { status: 500 }
       );
     }
+
+    publishDocumentEvent("DOCUMENT_STATUS_CHANGED", documentId, user.id, { previousStatus: "REVIEW", status: "DRAFT" });
 
     return NextResponse.json({
       message: "Document boundaries confirmed",

@@ -19,11 +19,24 @@ model DocumentType {
   name        String     @unique
   domain      String
   description String?
-  jsonSchema  Json
   documents   Document[]
-  fields      Field[]
+  versions    DocumentTypeVersion[]
   createdAt   TimestamptzString @default(now())
   updatedAt   temporal.updatedAtString()
+}
+
+model DocumentTypeVersion {
+  id             Int          @id @default(autoincrement())
+  documentTypeId Int
+  documentType   DocumentType @relation(fields: [documentTypeId], references: [id])
+  versionNumber  Int
+  jsonSchema     Json
+  status         String       @default("DRAFT")
+  createdAt      TimestamptzString @default(now())
+  updatedAt      temporal.updatedAtString()
+  publishedAt    TimestamptzString?
+  fields         Field[]
+  documents      Document[]
 }
 
 model Document {
@@ -33,6 +46,8 @@ model Document {
   mimeType       String
   documentTypeId Int?
   documentType   DocumentType? @relation(fields: [documentTypeId], references: [id])
+  documentTypeVersionId Int?
+  documentTypeVersion DocumentTypeVersion? @relation(fields: [documentTypeVersionId], references: [id])
   userId         Int
   user           User @relation(fields: [userId], references: [id])
 
@@ -40,6 +55,8 @@ model Document {
   batch          Batch? @relation(fields: [batchId], references: [id])
 
   status         String @default("PENDING")
+  activeWorkerId Int?
+  claimExpiresAt TimestamptzString?
   extractedText  String?
   parseStatus    String @default("PENDING")
   parseMessage   String?
@@ -57,8 +74,8 @@ model Field {
   type           String
   required       Boolean      @default(false)
   validationRule String?
-  documentTypeId Int
-  documentType   DocumentType @relation(fields: [documentTypeId], references: [id])
+  documentTypeVersionId Int
+  documentTypeVersion   DocumentTypeVersion @relation(fields: [documentTypeVersionId], references: [id])
   createdAt      TimestamptzString @default(now())
   updatedAt      temporal.updatedAtString()
 }
@@ -117,4 +134,3 @@ model DocumentInstance {
   createdAt TimestamptzString @default(now())
 updatedAt temporal.updatedAtString()
 }
-

@@ -7,7 +7,7 @@ import {
 } from "vitest";
 
 import {
-  getFieldsByDocumentType,
+  getFieldsByVersion,
   createField,
   getFieldById,
   updateField,
@@ -19,9 +19,11 @@ import { db } from "../../prisma/db";
 describe("fieldService", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(db.orm.public.DocumentTypeVersion, "where").mockReturnValue(db.orm.public.DocumentTypeVersion);
+    vi.spyOn(db.orm.public.DocumentTypeVersion, "first").mockResolvedValue({ id: 1, status: "DRAFT" } as unknown as never);
   });
 
-  describe("getFieldsByDocumentType", () => {
+  describe("getFieldsByVersion", () => {
     it("gets all fields for a document type", async () => {
       const mockFields = [
         {
@@ -30,7 +32,7 @@ describe("fieldService", () => {
           type: "string",
           required: true,
           validationRule: null,
-          documentTypeId: 1,
+          documentTypeVersionId: 1,
         },
         {
           id: 2,
@@ -38,7 +40,7 @@ describe("fieldService", () => {
           type: "date",
           required: true,
           validationRule: null,
-          documentTypeId: 1,
+          documentTypeVersionId: 1,
         },
       ];
 
@@ -46,20 +48,29 @@ describe("fieldService", () => {
         .mockReturnValue(
           db.orm.public.Field
         );
-
       vi.spyOn(db.orm.public.Field, "all")
         .mockResolvedValue(
           mockFields as unknown as never
         );
 
       const result =
-        await getFieldsByDocumentType(1);
+        await getFieldsByVersion(1);
 
       expect(result).toEqual(mockFields);
     });
   });
 
   describe("createField", () => {
+    it("does not allow fields to be added to a published version", async () => {
+      vi.spyOn(db.orm.public.DocumentTypeVersion, "first").mockResolvedValue({ id: 1, status: "ACTIVE" } as unknown as never);
+      const createMock = vi.spyOn(db.orm.public.Field, "create");
+
+      await expect(createField({ name: "New field", type: "string", documentTypeVersionId: 1 }))
+        .rejects.toThrow("Fields can only be changed on a draft version");
+
+      expect(createMock).not.toHaveBeenCalled();
+    });
+
     it("creates a field with normalized input", async () => {
       vi.spyOn(db.orm.public.Field, "where")
         .mockReturnValue(
@@ -77,7 +88,7 @@ describe("fieldService", () => {
         type: "string",
         required: true,
         validationRule: "required",
-        documentTypeId: 1,
+        documentTypeVersionId: 1,
       };
 
       const createMock = vi
@@ -91,7 +102,7 @@ describe("fieldService", () => {
         type: "string",
         required: true,
         validationRule: "required",
-        documentTypeId: 1,
+        documentTypeVersionId: 1,
       });
 
       expect(createMock).toHaveBeenCalledWith({
@@ -99,7 +110,7 @@ describe("fieldService", () => {
         type: "string",
         required: true,
         validationRule: "required",
-        documentTypeId: 1,
+        documentTypeVersionId: 1,
       });
 
       expect(result).toEqual(
@@ -127,7 +138,7 @@ describe("fieldService", () => {
       await createField({
         name: "Client Name",
         type: "string",
-        documentTypeId: 1,
+        documentTypeVersionId: 1,
       });
 
       expect(createMock).toHaveBeenCalledWith({
@@ -135,7 +146,7 @@ describe("fieldService", () => {
         type: "string",
         required: false,
         validationRule: undefined,
-        documentTypeId: 1,
+        documentTypeVersionId: 1,
       });
     });
 
@@ -147,7 +158,7 @@ describe("fieldService", () => {
       type: "string",
       required: true,
       validationRule: null,
-      documentTypeId: 1,
+      documentTypeVersionId: 1,
     },
   ];
 
@@ -170,7 +181,7 @@ describe("fieldService", () => {
     createField({
       name: "CLIENT NAME",
       type: "string",
-      documentTypeId: 1,
+      documentTypeVersionId: 1,
     })
   ).rejects.toThrow(
     "A field with this name already exists in this template"
@@ -198,7 +209,7 @@ describe("fieldService", () => {
       await createField({
         name: "Client Name",
         type: "string",
-        documentTypeId: 2,
+        documentTypeVersionId: 2,
       });
 
       expect(createMock).toHaveBeenCalled();
@@ -213,7 +224,7 @@ describe("fieldService", () => {
         type: "string",
         required: true,
         validationRule: null,
-        documentTypeId: 1,
+        documentTypeVersionId: 1,
       };
 
       vi.spyOn(db.orm.public.Field, "where")
@@ -272,7 +283,7 @@ describe("fieldService", () => {
         type: "string",
         required: true,
         validationRule: null,
-        documentTypeId: 1,
+        documentTypeVersionId: 1,
       };
 
       vi.spyOn(db.orm.public.Field, "where")
@@ -320,7 +331,7 @@ describe("fieldService", () => {
         type: "string",
         required: true,
         validationRule: null,
-        documentTypeId: 1,
+        documentTypeVersionId: 1,
       };
 
       const anotherField = {
@@ -329,7 +340,7 @@ describe("fieldService", () => {
         type: "string",
         required: false,
         validationRule: null,
-        documentTypeId: 1,
+        documentTypeVersionId: 1,
       };
 
       vi.spyOn(db.orm.public.Field, "where")
@@ -366,7 +377,7 @@ describe("fieldService", () => {
         type: "string",
         required: true,
         validationRule: null,
-        documentTypeId: 1,
+        documentTypeVersionId: 1,
       };
 
       vi.spyOn(db.orm.public.Field, "where")
@@ -410,6 +421,10 @@ describe("fieldService", () => {
         .mockReturnValue(
           db.orm.public.Field
         );
+
+      vi.spyOn(db.orm.public.Field, "first").mockResolvedValue({
+        id: 1, documentTypeVersionId: 1,
+      } as unknown as never);
 
       const deleteMock = vi
         .spyOn(db.orm.public.Field, "delete")

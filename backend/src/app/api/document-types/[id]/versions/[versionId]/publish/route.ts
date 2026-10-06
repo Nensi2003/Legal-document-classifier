@@ -1,0 +1,19 @@
+import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth";
+import { publishDocumentTypeVersion } from "@/services/documentTypeService";
+
+export async function POST(_request: Request, context: { params: Promise<{ id: string; versionId: string }> }) {
+  const { user, error } = await requireAdmin();
+  if (error || !user) {
+    return NextResponse.json({ error }, { status: error === "Not authenticated" ? 401 : 403 });
+  }
+  const { id, versionId } = await context.params;
+  const typeId = Number(id), version = Number(versionId);
+  if (!Number.isInteger(typeId) || !Number.isInteger(version)) return NextResponse.json({ error: "Invalid document type or version ID" }, { status: 400 });
+  try { return NextResponse.json(await publishDocumentTypeVersion(typeId, version)); }
+  catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to publish version";
+    if (message.includes("not found")) return NextResponse.json({ error: message }, { status: 404 });
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}

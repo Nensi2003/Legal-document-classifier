@@ -1,6 +1,7 @@
-import { getDocumentTypeById } from "@/services/documentTypeService";
+import { getDocumentTypeById, getDocumentTypeVersions } from "@/services/documentTypeService";
 import {
   getFieldsByDocumentType,
+  getFieldsByVersion,
   createField,
 } from "@/services/fieldService";
 import { NextRequest, NextResponse } from "next/server";
@@ -29,7 +30,14 @@ export async function GET(
       );
     }
 
-    const fields = await getFieldsByDocumentType(documentTypeId);
+    const versionId = Number(new URL(request.url).searchParams.get("versionId"));
+    if (Number.isInteger(versionId) && versionId > 0) {
+      const versions = await getDocumentTypeVersions(documentTypeId);
+      if (!versions.some((version) => version.id === versionId)) return NextResponse.json({ error: "Document type version not found" }, { status: 404 });
+    }
+    const fields = Number.isInteger(versionId) && versionId > 0
+      ? await getFieldsByVersion(versionId)
+      : await getFieldsByDocumentType(documentTypeId);
 
     return NextResponse.json(fields);
   } catch (error) {
@@ -77,12 +85,18 @@ export async function POST(
       );
     }
 
+    const versionId = Number(new URL(request.url).searchParams.get("versionId"));
+    if (!Number.isInteger(versionId) || versionId <= 0) {
+      return NextResponse.json({ error: "versionId is required; create a draft version before editing fields" }, { status: 400 });
+    }
+    const versions = await getDocumentTypeVersions(documentTypeId);
+    if (!versions.some((version) => version.id === versionId)) return NextResponse.json({ error: "Document type version not found" }, { status: 404 });
     const field = await createField({
       name,
       type,
       required,
       validationRule,
-      documentTypeId,
+      documentTypeVersionId: versionId,
     });
 
     return NextResponse.json(field, { status: 201 });

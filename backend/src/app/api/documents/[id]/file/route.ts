@@ -1,7 +1,7 @@
 import { readFile } from "fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { db } from "@/prisma/db";
+import { getAccessibleDocumentById } from "@/services/documentAccessService";
 
 import { getStoredFilePath } from "@/lib/fileStorage";
 
@@ -33,12 +33,7 @@ export async function GET(
       );
     }
 
-    const document = await db.orm.public.Document
-      .where({
-        id: documentId,
-        userId: user.id,
-      })
-      .first();
+    const document = await getAccessibleDocumentById(documentId, user.id);
 
     if (!document) {
       return NextResponse.json(

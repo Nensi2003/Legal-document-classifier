@@ -1,7 +1,10 @@
 import { getCurrentUser } from "@/lib/auth";
+import { getAccessibleDocumentById } from "@/services/documentAccessService";
 import { db } from "@/prisma/db";
 import { NextRequest, NextResponse } from "next/server";
 import type { JsonValue } from "@prisma/orm-postgres/target/codec-types";
+import { publishDocumentEvent } from "@/realtime/publisher";
+import { assertDocumentClaim } from "@/services/documentClaimService";
 
 export const runtime = "nodejs";
 
@@ -40,12 +43,7 @@ export async function PATCH(
     }
 
     // Make sure the parent document belongs to the current user.
-    const document = await db.orm.public.Document
-      .where({
-        id: documentId,
-        userId: user.id,
-      })
-      .first();
+    const document = await getAccessibleDocumentById(documentId, user.id);
 
     if (!document) {
       return NextResponse.json(
@@ -53,6 +51,9 @@ export async function PATCH(
         { status: 404 }
       );
     }
+
+    const claim = await assertDocumentClaim(documentId, user.id);
+    if (!claim.allowed) return NextResponse.json({ error: claim.error }, { status: claim.status });
 
     // Make sure the instance belongs to this document.
     const instance = await db.orm.public.DocumentInstance
@@ -70,7 +71,18 @@ export async function PATCH(
     }
 
     const body = await request.json();
+    if (typeof body.expectedUpdatedAt !== "string") {
+      return NextResponse.json({ error: "expectedUpdatedAt is required" }, { status: 400 });
+    }
     const draftData = body.draftData as JsonValue;
+
+    // Compare-and-swap the shared parent revision before saving the instance.
+    const updatedDocument = await db.orm.public.Document
+      .where({ id: documentId, updatedAt: body.expectedUpdatedAt, activeWorkerId: user.id, claimExpiresAt: document.claimExpiresAt })
+      .update({ status: "DRAFT" });
+    if (!updatedDocument) {
+      return NextResponse.json({ error: "This document changed in another session. Reload it before saving again." }, { status: 409 });
+    }
 
     // Save the instance draft.
     const updatedInstance =
@@ -91,17 +103,13 @@ export async function PATCH(
       );
     }
 
-    // The parent document is also a draft while any instance
-    // is being edited. This keeps the Documents/Drafts list
-    // consistent with the instance status.
-    await db.orm.public.Document
-      .where({
-        id: documentId,
-        userId: user.id,
-      })
-      .update({
-        status: "DRAFT",
-      });
+    publishDocumentEvent("DOCUMENT_UPDATED", documentId, user.id, {
+      status: "DRAFT",
+      instanceId: instanceIdNumber,
+    });
+    if (document.status !== "DRAFT") {
+      publishDocumentEvent("DOCUMENT_STATUS_CHANGED", documentId, user.id, { previousStatus: document.status, status: "DRAFT" });
+    }
 
     return NextResponse.json({
       instance: {
@@ -112,7 +120,9 @@ export async function PATCH(
         endPage: updatedInstance.endPage,
         status: updatedInstance.status,
         draftData: updatedInstance.draftData,
+        updatedAt: updatedInstance.updatedAt,
       },
+      documentUpdatedAt: updatedDocument.updatedAt,
     });
   } catch (error) {
     console.error(

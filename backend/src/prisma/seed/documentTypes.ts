@@ -1,5 +1,6 @@
 import { db } from "@/prisma/db";
 import type { JsonValue } from "@prisma/orm-postgres/target/codec-types";
+import { createDocumentType } from "@/services/documentTypeService";
 
 const documentTypes: {
   name: string;
@@ -473,7 +474,7 @@ export async function seedDocumentTypes() {
       continue;
     }
 
-    await db.orm.public.DocumentType.create({
+    await createDocumentType({
       name: documentType.name,
       domain: documentType.domain,
       description: documentType.description,

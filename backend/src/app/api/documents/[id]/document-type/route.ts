@@ -2,7 +2,10 @@ import { getCurrentUser } from "@/lib/auth";
 import { assignDocumentType } from "@/services/documentService";
 import { getDocumentTypeById } from "@/services/documentTypeService";
 import { db } from "@/prisma/db";
+import { getAccessibleDocumentById } from "@/services/documentAccessService";
 import { NextRequest, NextResponse } from "next/server";
+import { publishDocumentEvent } from "@/realtime/publisher";
+import { assertDocumentClaim } from "@/services/documentClaimService";
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -44,12 +47,7 @@ export async function PATCH(
       );
     }
 
-    const document = await db.orm.public.Document
-      .where({
-        id: documentId,
-        userId: user.id,
-      })
-      .first();
+    const document = await getAccessibleDocumentById(documentId, user.id);
 
     if (!document) {
       return NextResponse.json(
@@ -57,6 +55,8 @@ export async function PATCH(
         { status: 404 }
       );
     }
+    const claim = await assertDocumentClaim(documentId, user.id);
+    if (!claim.allowed) return NextResponse.json({ error: claim.error }, { status: claim.status });
 
     const documentType = await getDocumentTypeById(documentTypeId);
 
@@ -67,16 +67,22 @@ export async function PATCH(
       );
     }
 
-    await assignDocumentType(
+    const assigned = await assignDocumentType(
       documentId,
       user.id,
       documentTypeId
     );
+    if (!assigned) {
+      return NextResponse.json({ error: "Document type assignment failed" }, { status: 404 });
+    }
+
+    publishDocumentEvent("DOCUMENT_UPDATED", documentId, user.id, { documentTypeId, documentTypeVersionId: assigned.documentTypeVersionId });
 
     return NextResponse.json({
       message: "Document type assigned successfully",
       documentId,
       documentTypeId,
+      documentTypeVersionId: assigned.documentTypeVersionId,
     });
   } catch (error) {
     console.error("Error assigning document type:", error);

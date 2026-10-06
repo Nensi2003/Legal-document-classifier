@@ -4,12 +4,40 @@ import { DocumentTypeList } from "./DocumentTypeList";
 
 import {
   deleteDocumentType,
+  getFields,
+  getDocumentTypeById,
   type DocumentType,
 } from "./api";
 
 import { TemplateEditor } from "./TemplateEditor";
+import type { JSONSchema, JSONSchemaProperty } from "../../types/jsonSchema";
 
-export function TemplatePage() {
+function mergeRecordedFields(documentType: DocumentType, fields: Awaited<ReturnType<typeof getFields>>): DocumentType {
+  const source = documentType.jsonSchema as Partial<JSONSchema> | null;
+  const properties: Record<string, JSONSchemaProperty> = { ...(source?.properties ?? {}) };
+  const required = new Set(source?.required ?? []);
+  const schemaTypes = new Set(["string", "number", "integer", "boolean", "object", "array"]);
+
+  for (const field of fields) {
+    if (!(field.name in properties)) {
+      const type = schemaTypes.has(field.type) ? field.type as JSONSchemaProperty["type"] : "string";
+      properties[field.name] = { type, title: field.name };
+    }
+    if (field.required) required.add(field.name);
+  }
+
+  return {
+    ...documentType,
+    jsonSchema: {
+      ...(source ?? {}),
+      type: "object",
+      properties,
+      ...(required.size ? { required: [...required] } : {}),
+    } satisfies JSONSchema,
+  };
+}
+
+export function TemplatePage({ canPublish = false }: { canPublish?: boolean }) {
   const [editingTemplate, setEditingTemplate] =
     useState<DocumentType | null>(null);
 
@@ -18,6 +46,7 @@ export function TemplatePage() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const [error, setError] = useState("");
+  const [loadingTemplate, setLoadingTemplate] = useState(false);
 
   function refreshTemplates() {
     setRefreshKey((value) => value + 1);
@@ -27,6 +56,22 @@ export function TemplatePage() {
     setCreating(false);
     setEditingTemplate(null);
     refreshTemplates();
+  }
+
+  async function handleEdit(documentType: DocumentType) {
+    try {
+      setError("");
+      setLoadingTemplate(true);
+      const fullTemplate = await getDocumentTypeById(documentType.id, undefined, true);
+      const fields = fullTemplate.documentTypeVersionId
+        ? await getFields(documentType.id, fullTemplate.documentTypeVersionId)
+        : [];
+      setEditingTemplate(mergeRecordedFields(fullTemplate, fields));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to load template");
+    } finally {
+      setLoadingTemplate(false);
+    }
   }
 
   async function handleDelete(documentType: DocumentType) {
@@ -72,6 +117,7 @@ export function TemplatePage() {
         </button>
 
         <TemplateEditor
+          canPublish={canPublish}
           documentType={editingTemplate ?? undefined}
           onSaved={handleSaved}
           onCancel={() => {
@@ -133,6 +179,7 @@ export function TemplatePage() {
       )}
 
       {/* Templates */}
+      {loadingTemplate && <p role="status" className="text-sm text-slate-500">Loading template…</p>}
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 px-6 py-5">
           <h3 className="text-base font-semibold text-slate-900">
@@ -148,9 +195,7 @@ export function TemplatePage() {
         <div className="p-6">
           <DocumentTypeList
             key={refreshKey}
-            onEdit={(documentType) =>
-              setEditingTemplate(documentType)
-            }
+            onEdit={(documentType) => void handleEdit(documentType)}
             onDelete={handleDelete}
           />
         </div>

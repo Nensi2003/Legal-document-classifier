@@ -12,6 +12,7 @@ export interface DocumentInstance {
   status: string;
   draftData: Record<string, unknown> | null;
   generatedJSON: unknown | null;
+  updatedAt: string;
 }
 
 export async function getDocumentInstances(
@@ -38,7 +39,8 @@ export async function getDocumentInstances(
 export async function saveInstanceDraft(
   documentId: number,
   instanceId: number,
-  draftData: Record<string, unknown>
+  draftData: Record<string, unknown>,
+  expectedUpdatedAt: string
 ) {
   const response = await fetch(
     `${API_BASE_URL}/api/documents/${documentId}/instances/${instanceId}/draft`,
@@ -50,6 +52,7 @@ export async function saveInstanceDraft(
       credentials: "include",
       body: JSON.stringify({
         draftData,
+        expectedUpdatedAt,
       }),
     }
   );
@@ -62,5 +65,5 @@ export async function saveInstanceDraft(
     );
   }
 
-  return result.instance;
+  return { ...result.instance, documentUpdatedAt: result.documentUpdatedAt };
 }

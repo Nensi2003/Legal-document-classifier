@@ -82,7 +82,7 @@ export function AdminDashboard({
         </h1>
 
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Manage users and uploaded documents.
+          Manage users and publish documents for ordinary users to process.
         </p>
       </div>
 
@@ -128,7 +128,7 @@ export function AdminDashboard({
     Administration
   </h2>
 
-  <div className="grid gap-4 md:grid-cols-3">
+  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
 
     <AdminAction
       title="Users"
@@ -138,7 +138,7 @@ export function AdminDashboard({
 
     <AdminAction
       title="Documents"
-      description="View and manage uploaded documents."
+      description="View published documents and upload activity."
       onClick={() => onNavigate("admin-documents")}
     />
 
@@ -146,6 +146,18 @@ export function AdminDashboard({
       title="Document Types"
       description="View document types and export combined JSON data."
       onClick={() => onNavigate("admin-document-types")}
+    />
+
+    <AdminAction
+      title="Publish Document"
+      description="Make one document available for users to process."
+      onClick={() => onNavigate("upload")}
+    />
+
+    <AdminAction
+      title="Publish Batch"
+      description="Make several documents available together."
+      onClick={() => onNavigate("batch-upload")}
     />
 
   </div>

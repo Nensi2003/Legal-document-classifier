@@ -3,12 +3,22 @@ import {
   getDocumentTypes,
   createDocumentType,
 } from "@/services/documentTypeService";
+import { getActiveDocumentTypeVersion } from "@/services/documentTypeService";
 
 export async function GET() {
   try {
     const documentTypes = await getDocumentTypes();
-
-    return NextResponse.json(documentTypes);
+    return NextResponse.json(await Promise.all(documentTypes.map(async (documentType) => {
+      const activeVersion = await getActiveDocumentTypeVersion(documentType.id);
+      return {
+        ...documentType,
+        activeVersion: activeVersion ? {
+          id: activeVersion.id,
+          versionNumber: activeVersion.versionNumber,
+          status: activeVersion.status,
+        } : null,
+      };
+    })));
   } catch (error) {
     console.error("Error fetching document types:", error);
 
@@ -23,7 +33,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const { name, domain, description, jsonSchema } = body;
+    const { name, domain, description, jsonSchema, fields } = body;
 
     if (!name || !domain || !jsonSchema) {
       return NextResponse.json(
@@ -39,6 +49,8 @@ export async function POST(request: NextRequest) {
       domain,
       description,
       jsonSchema,
+      fields,
+      status: "DRAFT",
     });
 
     return NextResponse.json(documentType, { status: 201 });
