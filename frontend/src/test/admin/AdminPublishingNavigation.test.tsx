@@ -25,7 +25,7 @@ describe("admin publishing navigation", () => {
 
   it("provides a dashboard button on batch publishing", () => {
     const onBack = vi.fn();
-    render(<BatchUpload isAdmin onBackToDashboard={onBack} onComplete={vi.fn()} onCancel={vi.fn()} onOpenDraft={vi.fn()} />);
+    render(<BatchUpload isAdmin onBackToDashboard={onBack} onComplete={vi.fn()} onCancel={vi.fn()} onOpenDocument={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "← Back to Dashboard" }));
     expect(onBack).toHaveBeenCalledOnce();
   });

@@ -55,6 +55,7 @@ describe("WebSocket collaboration gateway", () => {
         claimedBy.set(documentId, user);
       },
       releaseDocument: async (user, documentId) => { if (claimedBy.get(documentId)?.id === user.id) claimedBy.delete(documentId); },
+      renewDocumentClaim: async (user, documentId) => claimedBy.get(documentId)?.id === user.id,
       getDocumentWorkers: async (documentId) => {
         const owner = claimedBy.get(documentId);
         return owner ? [{ userId: owner.id, userName: owner.name }] : [];
@@ -215,5 +216,25 @@ describe("WebSocket collaboration gateway", () => {
     reconnected.send(JSON.stringify({ type: "CLAIM_DOCUMENT", documentId: 123 }));
     await reopened;
     expect(gateway.getRoomSize("document:123")).toBe(2);
+  });
+
+  it("forgets a live socket claim after an authenticated HTTP release", async () => {
+    const ada = connect(1);
+    await connected(ada);
+    const claimed = nextEvent(ada, "DOCUMENT_CLAIMED", 123);
+    ada.send(JSON.stringify({ type: "CLAIM_DOCUMENT", documentId: 123 }));
+    await claimed;
+
+    // The HTTP endpoint has already cleared the database claim before it calls this.
+    claimedBy.delete(123);
+    expect(gateway.forgetUserClaim(1, 123)).toBe(1);
+
+    // A subsequent socket subscription can now acquire the document again.
+    const lin = connect(2);
+    await connected(lin);
+    const linClaimed = nextEvent(lin, "DOCUMENT_CLAIMED", 123);
+    lin.send(JSON.stringify({ type: "CLAIM_DOCUMENT", documentId: 123 }));
+    await linClaimed;
+    expect(claimedBy.get(123)?.id).toBe(2);
   });
 });

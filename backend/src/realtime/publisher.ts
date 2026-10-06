@@ -3,13 +3,28 @@ import type { RealtimeEvent, RealtimeEventType } from "./protocol";
 
 type PublishTarget = "available" | `document:${number}`;
 type Publisher = (target: PublishTarget, event: RealtimeEvent) => void;
+type ClaimReleaser = (userId: number, documentId: number) => void;
 const publisherKey = "__legalDocumentClassifierRealtimePublisher" as const;
-type PublisherRegistry = typeof globalThis & { __legalDocumentClassifierRealtimePublisher?: Publisher };
+const claimReleaserKey = "__legalDocumentClassifierRealtimeClaimReleaser" as const;
+type PublisherRegistry = typeof globalThis & {
+  __legalDocumentClassifierRealtimePublisher?: Publisher;
+  __legalDocumentClassifierRealtimeClaimReleaser?: ClaimReleaser;
+};
 
-export function registerRealtimePublisher(publisher: Publisher | null) {
+export function registerRealtimePublisher(publisher: Publisher | null, claimReleaser: ClaimReleaser | null = null) {
   const registry = globalThis as PublisherRegistry;
-  if (publisher) registry[publisherKey] = publisher;
-  else delete registry[publisherKey];
+  if (publisher) {
+    registry[publisherKey] = publisher;
+    if (claimReleaser) registry[claimReleaserKey] = claimReleaser;
+  } else {
+    delete registry[publisherKey];
+    delete registry[claimReleaserKey];
+  }
+}
+
+export function forgetRealtimeUserClaim(userId: number, documentId: number) {
+  const registry = globalThis as PublisherRegistry;
+  registry[claimReleaserKey]?.(userId, documentId);
 }
 
 export function createRealtimeEvent<TPayload extends Record<string, unknown>>(

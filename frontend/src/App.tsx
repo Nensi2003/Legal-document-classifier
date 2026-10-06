@@ -14,11 +14,11 @@ import { RegisterForm } from "./features/auth/RegisterForm";
 
 import { TemplatePage } from "./features/document-types/TemplatePage";
 
-import { DraftList } from "./features/documents/DraftList";
 
 import {
   getDocumentById,
   claimDocument,
+  releaseDocumentClaim,
   type Document,
 } from "./features/documents/api";
 
@@ -43,7 +43,7 @@ import { AdminDocumentTypes } from "./features/admin/AdminDocumentTypes";
 import { realtimeClient } from "./features/realtime/realtimeClient";
 import { DocumentCollaborationBar } from "./features/documents/components/DocumentCollaborationBar";
 
-const SHARED_PAGES = ["documents", "drafts", "upload", "batch-upload", "templates"];
+const SHARED_PAGES = ["documents", "upload", "batch-upload", "templates"];
 const ADMIN_PAGES = ["admin-dashboard", "admin-users", "admin-documents", "admin-document-types"];
 
 function getRestorablePage(page: string | null, role: string): string | null {
@@ -146,7 +146,14 @@ function App() {
   useEffect(() => {
     if (!user || !selectedDocument) return;
     if (selectedDocument.status === "COMPLETED") return realtimeClient.watchDocument(selectedDocument.id);
-    return realtimeClient.claimDocument(selectedDocument.id);
+    const documentId = selectedDocument.id;
+    const releaseRealtimeClaim = realtimeClient.claimDocument(documentId);
+    return () => {
+      releaseRealtimeClaim();
+      void releaseDocumentClaim(documentId).catch((error) => {
+        console.error("Failed to release document claim after leaving the workspace:", error);
+      });
+    };
   }, [user?.id, selectedDocument?.id]);
 
   useEffect(() => realtimeClient.onEvent((event) => {
@@ -360,7 +367,7 @@ if (
       if (user?.role !== "ADMIN" && document.status !== "COMPLETED") {
         const claimed = await claimDocument(documentId);
         document = await getDocumentById(documentId);
-        if (claimed && (document.status === "AVAILABLE" || document.status === "PENDING")) {
+        if (claimed && document.parseStatus !== "SUCCESS" && document.status !== "REVIEW") {
           try {
             await parseDocument(documentId);
           } catch (parseError) {
@@ -386,7 +393,7 @@ if (
   // Open draft
   // --------------------------------------------------
 
-  function handleOpenDraft(
+  function handleOpenDocumentFromBatch(
     documentId: number
   ) {
     window.open(
@@ -469,7 +476,7 @@ if (
           onCancel={() =>
             handleNavigate("dashboard")
           }
-          onOpenDraft={handleOpenDraft}
+          onOpenDocument={handleOpenDocumentFromBatch}
         />
       </AppLayout>
     );
@@ -518,7 +525,7 @@ if (
     }
   }}
 />
-        <DocumentCollaborationBar documentId={selectedDocument.id} userId={user.id} />
+        <DocumentCollaborationBar documentId={selectedDocument.id} userId={user.id} activeWorkerId={selectedDocument.activeWorkerId} activeWorkerName={selectedDocument.activeWorkerName} />
       </AppLayout>
     );
   }
@@ -560,7 +567,7 @@ if (
           userRole={user.role}
           onLogout={handleLogout}
         >
-          <DocumentCollaborationBar documentId={selectedDocument.id} userId={user.id} />
+          <DocumentCollaborationBar documentId={selectedDocument.id} userId={user.id} activeWorkerId={selectedDocument.activeWorkerId} activeWorkerName={selectedDocument.activeWorkerName} />
           <DocumentBoundaryReview
   documentId={selectedDocument.id}
   fileName={selectedDocument.fileName}
@@ -614,7 +621,7 @@ if (
           </button>
 
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <DocumentCollaborationBar documentId={selectedDocument.id} userId={user.id} />
+            <DocumentCollaborationBar documentId={selectedDocument.id} userId={user.id} activeWorkerId={selectedDocument.activeWorkerId} activeWorkerName={selectedDocument.activeWorkerName} />
             <h1 className="text-2xl font-bold text-slate-900">
               {selectedDocument.status === "COMPLETED" || (selectedDocument.activeWorkerId != null && selectedDocument.activeWorkerId !== user.id) ? "Document is read-only" : "Select Document Type"}
             </h1>
@@ -661,7 +668,7 @@ if (
         userRole={user.role}
         onLogout={handleLogout}
       >
-        <DocumentCollaborationBar documentId={selectedDocument.id} userId={user.id} />
+        <DocumentCollaborationBar documentId={selectedDocument.id} userId={user.id} activeWorkerId={selectedDocument.activeWorkerId} activeWorkerName={selectedDocument.activeWorkerName} />
         <DocumentForm
           documentId={
             selectedDocument.id
@@ -697,50 +704,6 @@ if (
           onOpenDocument={
             handleOpenDocument
           }
-        />
-      </AppLayout>
-    );
-  }
-
-
-  // --------------------------------------------------
-  // Drafts
-  // --------------------------------------------------
-
-  if (currentPage === "drafts") {
-    return (
-      <AppLayout
-        currentPage={currentPage}
-        onNavigate={handleNavigate}
-        userName={user.name}
-        userRole={user.role}
-        onLogout={handleLogout}
-      >
-        <DraftList
-          onSelectDraft={async (
-            documentId: number
-          ) => {
-            try {
-              const document =
-                await getDocumentById(
-                  documentId
-                );
-
-              setSelectedDocument(
-                document
-              );
-
-              setCurrentPage(
-                "document"
-              );
-              updateAppUrl("document", document.id);
-            } catch (error) {
-              console.error(
-                "Failed to load draft:",
-                error
-              );
-            }
-          }}
         />
       </AppLayout>
     );

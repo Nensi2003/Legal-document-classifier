@@ -20,7 +20,7 @@ const next = nextModule.default;
 const { AUTH_COOKIE, verifyAuthToken } = authModule;
 const { db } = dbModule;
 const { getAccessibleDocumentById } = accessModule;
-const { claimDocument, releaseDocumentClaim, getActiveDocumentClaim } = claimModule;
+const { claimDocument, releaseDocumentClaim, renewDocumentClaim, getActiveDocumentClaim } = claimModule;
 const { createRealtimeGateway } = gatewayModule;
 const { registerRealtimePublisher } = publisherModule;
 
@@ -55,6 +55,9 @@ const gateway = createRealtimeGateway({
   async releaseDocument(user, documentId) {
     await releaseDocumentClaim(documentId, user.id);
   },
+  async renewDocumentClaim(user, documentId) {
+    return renewDocumentClaim(documentId, user.id);
+  },
   async getDocumentWorkers(documentId) {
     const worker = await getActiveDocumentClaim(documentId);
     return worker ? [worker] : [];
@@ -64,7 +67,7 @@ const gateway = createRealtimeGateway({
 await app.prepare();
 const server = createServer((request, response) => handle(request, response));
 const detachGateway = gateway.attach(server);
-registerRealtimePublisher(gateway.publish);
+registerRealtimePublisher(gateway.publish, gateway.forgetUserClaim);
 server.listen(port, hostname, () => {
   console.log(`> Next.js and realtime server listening at http://${hostname}:${port}`);
 });

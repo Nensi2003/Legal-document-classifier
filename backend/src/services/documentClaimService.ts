@@ -25,6 +25,7 @@ export async function claimDocument(documentId: number, userId: number) {
   // claims mutually exclusive at the database level.
   const updated = await db.orm.public.Document.where({
     id: documentId,
+    status: document.status,
     activeWorkerId: document.activeWorkerId,
     claimExpiresAt: document.claimExpiresAt,
   }).update({ activeWorkerId: userId, claimExpiresAt: expiresAt });
@@ -38,6 +39,24 @@ export async function claimDocument(documentId: number, userId: number) {
 
 export async function releaseDocumentClaim(documentId: number, userId: number) {
   return db.orm.public.Document.where({ id: documentId, activeWorkerId: userId }).update({ activeWorkerId: null, claimExpiresAt: null });
+}
+
+/** Extend an active socket claim without ever acquiring or reacquiring one. */
+export async function renewDocumentClaim(documentId: number, userId: number) {
+  const document = await db.orm.public.Document.where({ id: documentId }).first();
+  if (
+    !document ||
+    document.activeWorkerId !== userId ||
+    !document.claimExpiresAt ||
+    new Date(document.claimExpiresAt).getTime() <= Date.now()
+  ) return false;
+
+  const updated = await db.orm.public.Document.where({
+    id: documentId,
+    activeWorkerId: userId,
+    claimExpiresAt: document.claimExpiresAt,
+  }).update({ claimExpiresAt: new Date(Date.now() + CLAIM_TTL_MS).toISOString() });
+  return Boolean(updated);
 }
 
 export async function getActiveDocumentClaim(documentId: number) {

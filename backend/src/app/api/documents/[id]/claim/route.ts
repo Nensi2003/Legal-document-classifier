@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getAccessibleDocumentById } from "@/services/documentAccessService";
 import { claimDocument, DocumentClaimConflictError, releaseDocumentClaim } from "@/services/documentClaimService";
-import { publishDocumentEvent } from "@/realtime/publisher";
+import { forgetRealtimeUserClaim, publishDocumentEvent } from "@/realtime/publisher";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
@@ -27,6 +27,9 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   const id = Number((await params).id);
   if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Invalid document ID" }, { status: 400 });
   const released = await releaseDocumentClaim(id, user.id);
-  if (released) publishDocumentEvent("DOCUMENT_RELEASED", id, user.id, { userName: user.name });
+  if (released) {
+    forgetRealtimeUserClaim(user.id, id);
+    publishDocumentEvent("DOCUMENT_RELEASED", id, user.id, { userName: user.name });
+  }
   return NextResponse.json({ released: Boolean(released) });
 }

@@ -14,7 +14,7 @@ export interface Document {
   activeWorkerName?: string | null;
   claimExpiresAt?: string | null;
   isUploadedByCurrentUser?: boolean;
-  isAvailableToUser?: boolean;
+  isClaimedByCurrentUser?: boolean;
 
   status: string;
 
@@ -57,6 +57,18 @@ export async function claimDocument(documentId: number): Promise<boolean> {
   if (response.status === 409) return false;
   if (!response.ok) throw new Error(result.error ?? "Failed to claim document");
   return true;
+}
+
+/** Release this user's claim when leaving the processing workspace. */
+export async function releaseDocumentClaim(documentId: number): Promise<void> {
+  const response = await fetch(`http://localhost:3000/api/documents/${documentId}/claim`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result.error ?? "Failed to release document claim");
+  }
 }
 
 export async function assignDocumentType(

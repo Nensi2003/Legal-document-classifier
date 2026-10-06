@@ -76,10 +76,9 @@ export async function POST(request: NextRequest) {
       selectedVersionId = activeVersion.id;
     }
 
-    const isAdminUpload = user.role === "ADMIN";
     const batch = await db.orm.public.Batch.create({
       userId: user.id,
-      status: isAdminUpload ? "AVAILABLE" : "ACTIVE",
+      status: "ACTIVE",
     });
 
     // 4. Create uploads directory
@@ -133,6 +132,9 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
+      let uploadedDocumentId: number | null = null;
+      let uploadedFileName: string | null = null;
+      let uploadedAt: Date | string | null = null;
       try {
         // 8. Generate unique filename
         const fileExtension =
@@ -167,13 +169,16 @@ export async function POST(request: NextRequest) {
   batchId: batch.id,
   documentTypeId: selectedTypeId,
   documentTypeVersionId: selectedVersionId,
-  status: isAdminUpload ? "AVAILABLE" : "PENDING",
+  status: "DRAFT",
 });
+        uploadedDocumentId = document.id;
+        uploadedFileName = document.fileName;
+        uploadedAt = document.createdAt;
 
-        if (isAdminUpload) {
+        if (user.role === "ADMIN") {
           publishAvailableEvent(document.id, user.id, {
             fileName: document.fileName,
-            status: "AVAILABLE",
+            status: "DRAFT",
             createdAt: document.createdAt,
             batchId: batch.id,
           });
@@ -182,11 +187,11 @@ export async function POST(request: NextRequest) {
               id: document.id,
               fileName: document.fileName,
               mimeType: document.mimeType,
-              status: "AVAILABLE",
+              status: "DRAFT",
               parseStatus: document.parseStatus,
             },
             success: true,
-            status: "AVAILABLE",
+            status: "DRAFT",
             batchId: batch.id,
           });
           continue;
@@ -209,7 +214,7 @@ export async function POST(request: NextRequest) {
     extractedText: parsed.text,
     parseStatus: "SUCCESS",
     parseMessage: null,
-    status: "READY",
+    status: "DRAFT",
   });
 
         // 13. Classify document
@@ -223,14 +228,20 @@ export async function POST(request: NextRequest) {
     id: document.id,
     fileName: document.fileName,
     mimeType: document.mimeType,
-    status: "READY",
+    status: "DRAFT",
     parseStatus: "SUCCESS",
   },
   success: true,
-  status: "READY",
+  status: "DRAFT",
   batchId: batch.id,
   suggestions,
 });
+        publishAvailableEvent(document.id, user.id, {
+          fileName: document.fileName,
+          status: "DRAFT",
+          createdAt: document.createdAt,
+          batchId: batch.id,
+        });
       } catch (error) {
         console.error(
           `Failed to process ${file.name}:`,
@@ -244,6 +255,14 @@ export async function POST(request: NextRequest) {
           error:
             "The document could not be processed.",
         });
+        if (uploadedDocumentId !== null) {
+          publishAvailableEvent(uploadedDocumentId, user.id, {
+            fileName: uploadedFileName,
+            status: "DRAFT",
+            createdAt: uploadedAt,
+            batchId: batch.id,
+          });
+        }
       }
     }
 
@@ -260,9 +279,7 @@ export async function POST(request: NextRequest) {
 
      return NextResponse.json(
       {
-        message: isAdminUpload
-          ? "Documents published to the Available Documents queue."
-          : "Batch upload completed.",
+        message: "Batch documents are available for users to process.",
         batchId: batch.id,
         total: files.length,
         successful,

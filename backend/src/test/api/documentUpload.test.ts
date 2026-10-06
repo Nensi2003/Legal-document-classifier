@@ -43,9 +43,10 @@ describe("POST /api/documents", () => {
     expect(createDocumentMock).toHaveBeenCalledWith(expect.objectContaining({
       fileName: "contract.pdf",
       userId: user.id,
-      status: user.role === "ADMIN" ? "AVAILABLE" : "PENDING",
+      status: "DRAFT",
     }));
-    expect(publishAvailableMock).toHaveBeenCalledTimes(user.role === "ADMIN" ? 1 : 0);
+    expect(publishAvailableMock).toHaveBeenCalledTimes(1);
+    expect(publishAvailableMock).toHaveBeenCalledWith(44, user.id, expect.objectContaining({ status: "DRAFT" }));
   });
 
   it("pins an optional upload selection to the active template version", async () => {

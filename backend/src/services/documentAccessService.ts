@@ -1,9 +1,9 @@
 import { db } from "@/prisma/db";
 
 /**
- * Ordinary users can work on their own documents and admin-published
- * documents. Admin accounts publish and manage uploads but do not process
- * them through the user document workspace.
+ * Every authenticated non-admin user can view and work on every document.
+ * Admin accounts publish and manage uploads but do not process them through
+ * the user document workspace.
  */
 export async function getAccessibleDocumentById(documentId: number, userId: number) {
   const requester = await db.orm.public.User.where({ id: userId }).first();
@@ -11,10 +11,7 @@ export async function getAccessibleDocumentById(documentId: number, userId: numb
 
   const document = await db.orm.public.Document.where({ id: documentId }).first();
   if (!document) return null;
-  if (document.userId === userId || document.status === "COMPLETED") return document;
-
-  const uploader = await db.orm.public.User.where({ id: document.userId }).first();
-  return uploader?.role === "ADMIN" ? document : null;
+  return document;
 }
 
 export async function getDocumentsAccessibleToUser(userId: number) {
@@ -25,15 +22,17 @@ export async function getDocumentsAccessibleToUser(userId: number) {
   const uploaderById = new Map(users.map((user) => [user.id, user]));
 
   const isAdmin = uploaderById.get(userId)?.role === "ADMIN";
+  if (!uploaderById.has(userId)) return [];
   return documents
-    .filter((document) => !isAdmin && (document.userId === userId || uploaderById.get(document.userId)?.role === "ADMIN" || document.status === "COMPLETED"))
+    .filter(() => !isAdmin)
     .map((document) => ({
       ...document,
       uploaderName: uploaderById.get(document.userId)?.name ?? null,
       uploaderId: document.userId,
       uploaderRole: uploaderById.get(document.userId)?.role ?? null,
       isUploadedByCurrentUser: document.userId === userId,
-      isAvailableToUser: document.userId !== userId && uploaderById.get(document.userId)?.role === "ADMIN",
+      activeWorkerId: document.claimExpiresAt != null && new Date(document.claimExpiresAt).getTime() > Date.now() ? document.activeWorkerId : null,
+      claimExpiresAt: document.claimExpiresAt != null && new Date(document.claimExpiresAt).getTime() > Date.now() ? document.claimExpiresAt : null,
       activeWorkerName: document.activeWorkerId == null || !document.claimExpiresAt || new Date(document.claimExpiresAt).getTime() <= Date.now() ? null : uploaderById.get(document.activeWorkerId)?.name ?? null,
       isClaimedByCurrentUser: document.activeWorkerId === userId && document.claimExpiresAt != null && new Date(document.claimExpiresAt).getTime() > Date.now(),
     }));

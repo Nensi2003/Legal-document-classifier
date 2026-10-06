@@ -36,12 +36,8 @@ export function AppLayout({
           page: "dashboard",
         },
         {
-          label: "My Documents",
+          label: "Documents",
           page: "documents",
-        },
-        {
-          label: "My Drafts",
-          page: "drafts",
         },
         {
           label: "Templates",
@@ -238,10 +234,7 @@ function getPageTitle(page: string): string {
       return "Admin Dashboard";
 
     case "documents":
-      return "My Documents";
-
-    case "drafts":
-      return "My Drafts";
+      return "Documents";
 
     case "templates":
       return "Templates";

@@ -49,7 +49,7 @@ export function Dashboard({
           </h1>
 
           <p className="mt-2 text-slate-500 dark:text-slate-400">
-            Manage your documents and turn them into structured JSON.
+            Browse your team’s documents and turn them into structured JSON.
           </p>
         </div>
 

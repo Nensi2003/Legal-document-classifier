@@ -2,7 +2,17 @@ import { useEffect, useState } from "react";
 import { realtimeClient } from "../../realtime/realtimeClient";
 import type { ActiveDocumentWorker, RealtimeEvent } from "../../realtime/protocol";
 
-export function DocumentCollaborationBar({ documentId, userId }: { documentId: number; userId: number }) {
+export function DocumentCollaborationBar({
+  documentId,
+  userId,
+  activeWorkerId,
+  activeWorkerName,
+}: {
+  documentId: number;
+  userId: number;
+  activeWorkerId?: number | null;
+  activeWorkerName?: string | null;
+}) {
   const [workers, setWorkers] = useState<ActiveDocumentWorker[]>([]);
   const [notice, setNotice] = useState("");
 
@@ -25,10 +35,14 @@ export function DocumentCollaborationBar({ documentId, userId }: { documentId: n
   }), [documentId, userId]);
 
   const others = workers.filter((worker) => worker.userId !== userId);
+  const serverReportedOther = activeWorkerId != null && activeWorkerId !== userId
+    ? [{ userId: activeWorkerId, userName: activeWorkerName || "Another user" }]
+    : [];
+  const visibleOthers = others.length ? others : serverReportedOther;
   return <aside className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm" aria-live="polite">
-    <p className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 font-semibold ${others.length ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
-      <span aria-hidden="true" className={`h-2 w-2 rounded-full ${others.length ? "bg-red-500" : "bg-green-500"}`} />
-      {others.length ? `Currently working: ${others.map((worker) => worker.userName || "User").join(", ")}` : "You are working on this document"}
+    <p className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 font-semibold ${visibleOthers.length ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
+      <span aria-hidden="true" className={`h-2 w-2 rounded-full ${visibleOthers.length ? "bg-red-500" : "bg-green-500"}`} />
+      {visibleOthers.length ? `Currently working: ${visibleOthers.map((worker) => worker.userName || "User").join(", ")}` : "You are working on this document"}
     </p>
     {notice && <p className="rounded-md bg-sky-50 px-3 py-1.5 font-medium text-sky-700">{notice}</p>}
   </aside>;

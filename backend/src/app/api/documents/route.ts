@@ -127,16 +127,14 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       documentTypeId,
       documentTypeVersionId,
-      status: user.role === "ADMIN" ? "AVAILABLE" : "PENDING",
+      status: "DRAFT",
     });
 
-    if (user.role === "ADMIN") {
-      publishAvailableEvent(document.id, user.id, {
-        fileName: document.fileName,
-        status: "AVAILABLE",
-        createdAt: document.createdAt,
-      });
-    }
+    publishAvailableEvent(document.id, user.id, {
+      fileName: document.fileName,
+      status: "DRAFT",
+      createdAt: document.createdAt,
+    });
 
     return NextResponse.json(
       {
@@ -177,7 +175,7 @@ export async function GET() {
       );
     }
 
-    // Include the user's own documents and shared documents uploaded by admins.
+    // All documents are visible to authenticated processing users.
     const documents = await getDocumentsAccessibleToUser(user.id);
 
     // 3. Get document types

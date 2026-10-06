@@ -23,6 +23,7 @@ interface GatewayOptions {
   authorizeDocument: (user: RealtimeUser, documentId: number) => Promise<boolean>;
   claimDocument: (user: RealtimeUser, documentId: number) => Promise<void>;
   releaseDocument: (user: RealtimeUser, documentId: number) => Promise<void>;
+  renewDocumentClaim: (user: RealtimeUser, documentId: number) => Promise<boolean>;
   getDocumentWorkers: (documentId: number) => Promise<Array<{ userId: number; userName: string | null }>>;
   allowedOrigins?: string[];
 }
@@ -45,7 +46,9 @@ export function createRealtimeGateway(options: GatewayOptions) {
         state.isAlive = false;
         state.socket.ping();
         for (const documentId of state.claimedDocuments) {
-          void options.claimDocument(state.user, documentId).catch(() => undefined);
+          void options.renewDocumentClaim(state.user, documentId).then((renewed) => {
+            if (!renewed) forgetUserClaim(state.user.id, documentId);
+          }).catch(() => undefined);
         }
       }
     }
@@ -95,6 +98,19 @@ export function createRealtimeGateway(options: GatewayOptions) {
         emit(`${DOC_PREFIX}${documentId}`, event("DOCUMENT_RELEASED", documentId, state.user.id, { userName: state.user.name }));
       }).catch((error) => console.error("Failed to release document claim:", error));
     }
+  }
+
+  function forgetUserClaim(userId: number, documentId: number) {
+    const documentClaims = claimSockets.get(documentId);
+    const userSockets = documentClaims?.get(userId);
+    if (!userSockets) return 0;
+    let forgotten = 0;
+    for (const socket of userSockets) {
+      if (clients.get(socket)?.claimedDocuments.delete(documentId)) forgotten += 1;
+    }
+    documentClaims?.delete(userId);
+    if (documentClaims?.size === 0) claimSockets.delete(documentId);
+    return forgotten;
   }
 
   async function handleMessage(state: ClientState, raw: WebSocket.RawData) {
@@ -215,6 +231,7 @@ export function createRealtimeGateway(options: GatewayOptions) {
   return {
     attach,
     publish,
+    forgetUserClaim,
     close: () => new Promise<void>((resolve) => {
       clearInterval(heartbeat);
       for (const state of clients.values()) {

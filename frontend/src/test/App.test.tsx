@@ -4,9 +4,10 @@ import App from "../App";
 
 import { getCurrentUser } from "../features/auth/api";
 
-const { getDocumentByIdMock, claimDocumentMock, realtimeMock } = vi.hoisted(() => ({
+const { getDocumentByIdMock, claimDocumentMock, releaseDocumentClaimMock, realtimeMock } = vi.hoisted(() => ({
   getDocumentByIdMock: vi.fn(),
   claimDocumentMock: vi.fn(),
+  releaseDocumentClaimMock: vi.fn(),
   realtimeMock: {
     connect: vi.fn(),
     watchDocument: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("../features/auth/api", () => ({
 vi.mock("../features/documents/api", () => ({
   getDocumentById: getDocumentByIdMock,
   claimDocument: claimDocumentMock,
+  releaseDocumentClaim: releaseDocumentClaimMock,
 }));
 vi.mock("../features/documents/parseApi", () => ({ parseDocument: vi.fn() }));
 vi.mock("../features/realtime/realtimeClient", () => ({ realtimeClient: realtimeMock }));
@@ -69,11 +71,10 @@ vi.mock("../features/documents/DocumentList", () => ({
     </div>
   ),
 }));
-vi.mock("../features/documents/DraftList", () => ({ DraftList: () => <div data-testid="drafts-page" /> }));
 vi.mock("../features/documents/UploadDocument", () => ({ UploadDocument: () => <div data-testid="upload-page" /> }));
 vi.mock("../features/documents/BatchUpload", () => ({ BatchUpload: () => <div data-testid="batch-upload-page" /> }));
 vi.mock("../features/documents/components/DocumentForm", () => ({
-  DocumentForm: ({ documentId }: { documentId: number }) => <div data-testid="document-form">Document {documentId}</div>,
+  DocumentForm: ({ documentId, onBack }: { documentId: number; onBack: () => void }) => <div data-testid="document-form">Document {documentId}<button onClick={onBack}>Back to documents from form</button></div>,
 }));
 vi.mock("../features/documents/components/DocumentCollaborationBar", () => ({
   DocumentCollaborationBar: () => null,
@@ -94,6 +95,7 @@ vi.mock("../features/documents/components/AppLayout", () => ({
 describe("App authentication routing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    releaseDocumentClaimMock.mockResolvedValue(undefined);
     window.history.replaceState({}, "", "/");
     realtimeMock.connect.mockReturnValue(() => undefined);
     realtimeMock.watchDocument.mockReturnValue(() => undefined);
@@ -186,9 +188,32 @@ describe("App authentication routing", () => {
     expect(getDocumentByIdMock).toHaveBeenLastCalledWith(31);
   });
 
+  it("releases the worker claim when leaving the document form", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue({ id: 2, email: "test@gmail.com", name: "Test User", role: "USER" });
+    getDocumentByIdMock.mockResolvedValue({
+      id: 31,
+      fileName: "sample.pdf",
+      filePath: "uploads/sample.pdf",
+      mimeType: "application/pdf",
+      documentTypeId: 9,
+      status: "DRAFT",
+      parseStatus: "SUCCESS",
+      createdAt: "2026-10-06T10:00:00Z",
+    });
+    claimDocumentMock.mockResolvedValue(true);
+
+    render(<App />);
+    await screen.findByTestId("user-dashboard");
+    fireEvent.click(screen.getByRole("button", { name: "Go to documents" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open sample document" }));
+    await screen.findByTestId("document-form");
+    fireEvent.click(screen.getByRole("button", { name: "Back to documents from form" }));
+
+    await waitFor(() => expect(releaseDocumentClaimMock).toHaveBeenCalledWith(31));
+  });
+
   it.each([
     ["documents", "documents-page"],
-    ["drafts", "drafts-page"],
     ["upload", "upload-page"],
     ["batch-upload", "batch-upload-page"],
   ])("restores the %s tab after refresh", async (page, testId) => {
@@ -204,5 +229,15 @@ describe("App authentication routing", () => {
 
     expect(await screen.findByTestId(testId)).toBeInTheDocument();
     expect(new URLSearchParams(window.location.search).get("page")).toBe(page);
+  });
+
+  it("does not restore the removed My Drafts page", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue({ id: 2, email: "test@gmail.com", name: "Test User", role: "USER" });
+    window.history.replaceState({}, "", "/?page=drafts");
+
+    render(<App />);
+
+    expect(await screen.findByTestId("user-dashboard")).toBeInTheDocument();
+    expect(screen.queryByTestId("drafts-page")).not.toBeInTheDocument();
   });
 });

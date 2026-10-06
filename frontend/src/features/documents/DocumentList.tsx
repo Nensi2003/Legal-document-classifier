@@ -38,7 +38,6 @@ export function DocumentList({
     useState("");
   const [selectedStatus, setSelectedStatus] = useState("");
   const [selectedUploader, setSelectedUploader] = useState("");
-  const [selectedScope, setSelectedScope] = useState<"ALL" | "OWN" | "AVAILABLE">("ALL");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
@@ -198,8 +197,6 @@ export function DocumentList({
 
     return documents
       .filter((document) => {
-        if (selectedScope === "OWN" && !document.isUploadedByCurrentUser) return false;
-        if (selectedScope === "AVAILABLE" && !document.isAvailableToUser) return false;
         /*
          * Search by filename
          */
@@ -250,7 +247,6 @@ export function DocumentList({
     selectedDocumentType,
     selectedStatus,
     selectedUploader,
-    selectedScope,
     fromDate,
     toDate,
   ]);
@@ -302,7 +298,6 @@ export function DocumentList({
     selectedDocumentType !== "" ||
     selectedStatus !== "" ||
     selectedUploader !== "" ||
-    selectedScope !== "ALL" ||
     fromDate !== "" ||
     toDate !== "";
 
@@ -328,7 +323,6 @@ export function DocumentList({
     setSelectedDocumentType("");
     setSelectedStatus("");
     setSelectedUploader("");
-    setSelectedScope("ALL");
     setFromDate("");
     setToDate("");
     setCurrentPage(1);
@@ -362,7 +356,7 @@ export function DocumentList({
     return (
       <div className="rounded-xl border border-red-200 bg-red-50 p-6">
         <h2 className="font-semibold text-red-900">
-          My Documents
+            Documents
         </h2>
 
         <p
@@ -399,7 +393,7 @@ export function DocumentList({
           </h1>
 
           <p className="mt-2 text-sm text-slate-500">
-            Work on your uploads or documents published by administrators.
+            Browse documents uploaded by your team. Drafts stay available for anyone to continue.
           </p>
         </div>
 
@@ -414,16 +408,6 @@ export function DocumentList({
       </div>
 
       {/* Search and filters */}
-      <div className="flex flex-wrap gap-2" aria-label="Document collections">
-        {(["ALL", "OWN", "AVAILABLE"] as const).map((scope) => {
-          const count = scope === "ALL" ? documents.length : documents.filter((document) => scope === "OWN" ? document.isUploadedByCurrentUser : document.isAvailableToUser).length;
-          const label = scope === "ALL" ? "All documents" : scope === "OWN" ? "My uploads" : "Available Documents";
-          return <button key={scope} type="button" aria-pressed={selectedScope === scope} onClick={() => { setSelectedScope(scope); setCurrentPage(1); }} className={`rounded-full border px-4 py-2 text-sm font-medium transition ${selectedScope === scope ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
-            {label} <span className={selectedScope === scope ? "text-slate-300" : "text-slate-400"}>({count})</span>
-          </button>;
-        })}
-      </div>
-
       {documents.length > 0 && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
 
@@ -736,10 +720,13 @@ function DocumentCard({
   onOpen,
   onDelete,
 }: DocumentCardProps) {
-  const activelyClaimed = Boolean(document.activeWorkerId != null && document.claimExpiresAt && new Date(document.claimExpiresAt).getTime() > Date.now());
-  const availableForWork = !activelyClaimed && document.status !== "COMPLETED" && (document.status === "AVAILABLE" || (document.isAvailableToUser && ["DRAFT", "READY"].includes(document.status)));
+  const currentlyWorking = Boolean(
+    document.activeWorkerId != null &&
+      document.claimExpiresAt &&
+      new Date(document.claimExpiresAt).getTime() > Date.now(),
+  );
   return (
-    <article className={`px-5 py-5 transition sm:px-6 ${availableForWork ? "bg-emerald-50/60 hover:bg-emerald-50" : document.status !== "COMPLETED" && activelyClaimed ? "bg-rose-50/60 hover:bg-rose-50" : "hover:bg-slate-50"}`}>
+    <article className={`px-5 py-5 transition sm:px-6 ${currentlyWorking ? "bg-rose-50/60 hover:bg-rose-50" : "bg-emerald-50/60 hover:bg-emerald-50"}`}>
 
       {/* Desktop */}
       <div className="hidden md:grid md:grid-cols-[minmax(0,2fr)_1fr_1fr_1fr_1fr_auto] md:items-center md:gap-4">
@@ -760,7 +747,7 @@ function DocumentCard({
             <p className="mt-0.5 text-xs text-slate-400">
               Document #{document.id}
             </p>
-            {document.status !== "COMPLETED" && activelyClaimed && <p className="mt-1 text-xs font-semibold text-rose-700">Currently working: {document.activeWorkerName || "User"}</p>}
+            {currentlyWorking && <p className="mt-1 text-xs font-semibold text-rose-700">Currently working: {document.activeWorkerName || "User"}</p>}
 
           </div>
         </div>
@@ -838,7 +825,7 @@ function DocumentCard({
               Document #{document.id}
             </p>
             <p className="mt-1 text-xs font-medium text-slate-500">Uploaded by: {document.uploaderRole === "ADMIN" ? "Admin" : document.uploaderName || "Unknown"}</p>
-            {document.status !== "COMPLETED" && activelyClaimed && <p className="mt-1 text-xs font-semibold text-rose-700">Currently working: {document.activeWorkerName || "User"}</p>}
+            {currentlyWorking && <p className="mt-1 text-xs font-semibold text-rose-700">Currently working: {document.activeWorkerName || "User"}</p>}
 
           </div>
 

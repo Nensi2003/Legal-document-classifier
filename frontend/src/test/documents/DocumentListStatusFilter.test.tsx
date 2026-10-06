@@ -26,8 +26,8 @@ describe("DocumentList status filter", () => {
       { id: 2, fileName: "ready.pdf", status: "READY", createdAt: "2026-01-02", mimeType: "application/pdf" },
       { id: 3, fileName: "failed.pdf", status: "FAILED", createdAt: "2026-01-03", mimeType: "application/pdf" },
       { id: 4, fileName: "complete.pdf", status: "COMPLETED", createdAt: "2026-01-04", mimeType: "application/pdf", uploaderId: 7, uploaderName: "Morgan", uploaderRole: "USER" },
-      { id: 5, fileName: "working.pdf", status: "AVAILABLE", createdAt: "2026-01-05", mimeType: "application/pdf", activeWorkerId: 9, claimExpiresAt: "2030-01-01T00:00:00.000Z", activeWorkerName: "John Doe", uploaderId: 2, uploaderName: "Admin", uploaderRole: "ADMIN", isUploadedByCurrentUser: false },
-      { id: 6, fileName: "released-draft.pdf", status: "DRAFT", createdAt: "2026-01-06", mimeType: "application/pdf", uploaderId: 2, uploaderName: "Admin", uploaderRole: "ADMIN", isAvailableToUser: true, isUploadedByCurrentUser: false },
+      { id: 5, fileName: "working.pdf", status: "DRAFT", createdAt: "2026-01-05", mimeType: "application/pdf", activeWorkerId: 9, claimExpiresAt: "2030-01-01T00:00:00.000Z", activeWorkerName: "John Doe", uploaderId: 2, uploaderName: "Admin", uploaderRole: "ADMIN", isUploadedByCurrentUser: false, isClaimedByCurrentUser: false },
+      { id: 6, fileName: "released-draft.pdf", status: "DRAFT", createdAt: "2026-01-06", mimeType: "application/pdf", uploaderId: 2, uploaderName: "Admin", uploaderRole: "ADMIN", isUploadedByCurrentUser: false },
       { id: 7, fileName: "my-upload.pdf", status: "DRAFT", createdAt: "2026-01-07", mimeType: "application/pdf", uploaderId: 4, uploaderName: "Me", uploaderRole: "USER", isUploadedByCurrentUser: true },
     ]);
   });
@@ -40,8 +40,8 @@ describe("DocumentList status filter", () => {
       expect(statusFilter.querySelector(`option[value="${status}"]`)).not.toBeNull();
     }
 
-    fireEvent.change(statusFilter, { target: { value: "AVAILABLE" } });
-    await waitFor(() => expect(screen.getAllByText("available.pdf")).toHaveLength(2));
+    fireEvent.change(statusFilter, { target: { value: "DRAFT" } });
+    await waitFor(() => expect(screen.getAllByText("released-draft.pdf")).toHaveLength(2));
     expect(screen.queryByText("ready.pdf")).not.toBeInTheDocument();
     expect(screen.queryByText("failed.pdf")).not.toBeInTheDocument();
   });
@@ -58,16 +58,16 @@ describe("DocumentList status filter", () => {
     expect(screen.queryByText("failed.pdf")).not.toBeInTheDocument();
   });
 
-  it("shows uploader filters and row styles for available, working, and completed documents", async () => {
+  it("colors every unoccupied document green and every actively worked document red", async () => {
     render(<DocumentList onOpenDocument={vi.fn()} />);
     await screen.findAllByText("complete.pdf");
     const cards = screen.getAllByRole("article");
-    expect(cards.find((card) => card.textContent?.includes("available.pdf"))?.className).toContain("bg-emerald-50");
+    for (const filename of ["available.pdf", "ready.pdf", "failed.pdf", "complete.pdf", "released-draft.pdf", "my-upload.pdf"]) {
+      expect(cards.find((card) => card.textContent?.includes(filename))?.className).toContain("bg-emerald-50");
+    }
     const workingCard = cards.find((card) => card.textContent?.includes("working.pdf"));
     expect(workingCard?.className).toContain("bg-rose-50");
     expect(workingCard).toHaveTextContent("Currently working: John Doe");
-    expect(cards.find((card) => card.textContent?.includes("complete.pdf"))?.className).not.toContain("bg-emerald-50");
-    expect(cards.find((card) => card.textContent?.includes("released-draft.pdf"))?.className).toContain("bg-emerald-50");
     const uploader = screen.getByRole("combobox", { name: "Filter documents by uploader" });
     fireEvent.change(uploader, { target: { value: "7" } });
     await waitFor(() => expect(screen.getAllByText("complete.pdf")).toHaveLength(2));

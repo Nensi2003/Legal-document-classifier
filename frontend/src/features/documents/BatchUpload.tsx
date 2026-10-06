@@ -13,7 +13,7 @@ interface BatchUploadProps {
   onBackToDashboard?: () => void;
   onComplete: (result: BatchUploadResponse) => void;
   onCancel: () => void;
-  onOpenDraft: (documentId: number) => void;
+  onOpenDocument: (documentId: number) => void;
 }
 
   const ACTIVE_BATCH_KEY = "activeBatchId";
@@ -24,7 +24,7 @@ export function BatchUpload({
   onBackToDashboard,
   onComplete,
   onCancel,
-  onOpenDraft,
+  onOpenDocument,
 }: BatchUploadProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -484,7 +484,7 @@ useEffect(() => {
       ) : (
         <BatchResults
           result={result}
-          onOpenDraft={onOpenDraft}
+          onOpenDocument={onOpenDocument}
           onNewBatch={handleNewBatch}
           isAdmin={isAdmin}
           onBackToDashboard={onBackToDashboard}
@@ -498,7 +498,7 @@ interface BatchResultsProps {
   isAdmin: boolean;
   onBackToDashboard?: () => void;
   result: BatchUploadResponse;
-  onOpenDraft: (documentId: number) => void;
+  onOpenDocument: (documentId: number) => void;
   onNewBatch: () => void;
 }
 
@@ -506,7 +506,7 @@ function BatchResults({
   isAdmin,
   onBackToDashboard,
   result,
-  onOpenDraft,
+  onOpenDocument,
   onNewBatch,
 }: BatchResultsProps) {
   return (
@@ -551,19 +551,10 @@ function BatchResults({
         )}
 
         {/* Summary */}
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
           <SummaryCard
             value={result.total}
             label="Total"
-          />
-
-          <SummaryCard
-            value={
-              result.results.filter(
-                (item) => item.status === (isAdmin ? "AVAILABLE" : "READY")
-              ).length
-            }
-            label={isAdmin ? "Available" : "Ready"}
           />
 
           <SummaryCard
@@ -675,7 +666,7 @@ function BatchResults({
                       <button
                         type="button"
                         onClick={() =>
-                          onOpenDraft(item.document!.id)
+                          onOpenDocument(item.document!.id)
                         }
                         className="shrink-0 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
                       >
@@ -687,7 +678,7 @@ function BatchResults({
                       <button
                         type="button"
                         onClick={() =>
-                          onOpenDraft(item.document!.id)
+                          onOpenDocument(item.document!.id)
                         }
                         className="shrink-0 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
                       >

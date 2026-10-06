@@ -30,4 +30,11 @@ describe("DocumentCollaborationBar", () => {
 
     expect(screen.getByText("Currently working: Alex")).toHaveClass("bg-red-50", "text-red-700");
   });
+
+  it("shows the server-reported worker immediately before realtime presence arrives", () => {
+    render(<DocumentCollaborationBar documentId={7} userId={1} activeWorkerId={2} activeWorkerName="Test User" />);
+
+    expect(screen.getByText("Currently working: Test User")).toHaveClass("bg-red-50", "text-red-700");
+    expect(screen.queryByText("You are working on this document")).not.toBeInTheDocument();
+  });
 });

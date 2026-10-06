@@ -50,7 +50,14 @@ export async function GET(
     // 5. Return document
     const activeWorker = document.activeWorkerId == null || !document.claimExpiresAt || new Date(document.claimExpiresAt).getTime() <= Date.now()
       ? null : await (await import("@/prisma/db")).db.orm.public.User.where({ id: document.activeWorkerId }).first();
-    return NextResponse.json({ document: { ...document, activeWorkerName: activeWorker?.name ?? null } });
+    const isClaimed = activeWorker !== null;
+    return NextResponse.json({ document: {
+      ...document,
+      activeWorkerId: isClaimed ? document.activeWorkerId : null,
+      claimExpiresAt: isClaimed ? document.claimExpiresAt : null,
+      activeWorkerName: activeWorker?.name ?? null,
+      isClaimedByCurrentUser: isClaimed && document.activeWorkerId === user.id,
+    } });
   } catch (error) {
     console.error("Get document error:", error);
 
