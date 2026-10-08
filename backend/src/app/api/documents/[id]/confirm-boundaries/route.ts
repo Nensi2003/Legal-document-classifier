@@ -75,7 +75,7 @@ export async function POST(
       await db.orm.public.Document
         .where({ id: documentId })
         .update({
-          status: "DRAFT",
+          status: "AVAILABLE",
         });
 
     if (!updatedDocument) {
@@ -85,7 +85,7 @@ export async function POST(
       );
     }
 
-    publishDocumentEvent("DOCUMENT_STATUS_CHANGED", documentId, user.id, { previousStatus: "REVIEW", status: "DRAFT" });
+    publishDocumentEvent("DOCUMENT_STATUS_CHANGED", documentId, user.id, { previousStatus: "REVIEW", status: "AVAILABLE" });
 
     return NextResponse.json({
       message: "Document boundaries confirmed",

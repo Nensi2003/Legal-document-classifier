@@ -7,6 +7,7 @@ import {
   // type BatchDocumentResult,
 } from "./batchApi";
 import { getDocumentTypes, type DocumentType } from "../document-types/api";
+import { realtimeClient } from "../realtime/realtimeClient";
 
 interface BatchUploadProps {
   isAdmin?: boolean;
@@ -78,6 +79,9 @@ if (batch.batch.status === "COMPLETED") {
           mimeType: document.mimeType,
           status: document.status,
           parseStatus: document.parseStatus,
+          activeWorkerId: document.activeWorkerId ?? null,
+          activeWorkerName: document.activeWorkerName ?? null,
+          claimExpiresAt: document.claimExpiresAt ?? null,
         },
         success: document.status !== "FAILED",
         status: document.status,
@@ -116,6 +120,38 @@ if (batch.batch.status === "COMPLETED") {
 
   initializeBatch();
 }, []);
+
+useEffect(() => {
+  if (!result) return;
+
+  const documentIds = result.results
+    .map((item) => item.document?.id)
+    .filter((id): id is number => typeof id === "number");
+  if (documentIds.length === 0) return;
+
+  const releases = documentIds.map((id) => realtimeClient.watchDocument(id));
+  const watchedIds = new Set(documentIds);
+  let refreshTimer = 0;
+  const refresh = () => {
+    if (refreshTimer) window.clearTimeout(refreshTimer);
+    refreshTimer = window.setTimeout(() => {
+      void loadBatch(result.batchId).then((freshResult) => {
+        if (freshResult) setResult(freshResult);
+      });
+    }, 150);
+  };
+  const unsubscribe = realtimeClient.onEvent((event) => {
+    if (event.type === "CONNECTED" || (event.documentId && watchedIds.has(event.documentId) && [
+      "DOCUMENT_UPDATED", "DOCUMENT_STATUS_CHANGED", "DOCUMENT_COMPLETED", "DOCUMENT_CLAIMED", "DOCUMENT_RELEASED",
+    ].includes(event.type))) refresh();
+  });
+
+  return () => {
+    unsubscribe();
+    releases.forEach((release) => release());
+    if (refreshTimer) window.clearTimeout(refreshTimer);
+  };
+}, [result?.batchId, result?.results.map((item) => item.document?.id).join(",")]);
 
 
 useEffect(() => {
@@ -240,6 +276,9 @@ useEffect(() => {
   );
 
   setResult(result);
+  void loadBatch(result.batchId).then((freshResult) => {
+    if (freshResult) setResult(freshResult);
+  });
 
   onComplete(result);
 } catch (error) {
@@ -551,10 +590,15 @@ function BatchResults({
         )}
 
         {/* Summary */}
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <SummaryCard
             value={result.total}
             label="Total"
+          />
+
+          <SummaryCard
+            value={result.results.filter((item) => item.status === "AVAILABLE").length}
+            label="Available"
           />
 
           <SummaryCard
@@ -593,6 +637,11 @@ function BatchResults({
                 item.document?.fileName ??
                 item.fileName ??
                 "Unknown document";
+              const currentlyWorking = Boolean(
+                item.document?.activeWorkerId != null &&
+                  item.document.claimExpiresAt &&
+                  new Date(item.document.claimExpiresAt).getTime() > Date.now(),
+              );
 
               return (
                 <div
@@ -600,7 +649,8 @@ function BatchResults({
                     item.document?.id ??
                     `${item.fileName}-${index}`
                   }
-                  className="px-5 py-4 transition hover:bg-slate-50"
+                  data-testid={item.document?.id ? `batch-document-${item.document.id}` : undefined}
+                  className={`px-5 py-4 transition ${currentlyWorking ? "bg-rose-50/60 hover:bg-rose-50" : "bg-emerald-50/60 hover:bg-emerald-50"}`}
                 >
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
                     {/* Document */}
@@ -616,6 +666,12 @@ function BatchResults({
                         >
                           {documentName}
                         </p>
+
+                        {currentlyWorking && (
+                          <p className="mt-1 text-xs font-semibold text-rose-700">
+                            Currently working: {item.document?.activeWorkerName || "User"}
+                          </p>
+                        )}
 
                         {item.success &&
                           item.suggestions &&
@@ -662,7 +718,7 @@ function BatchResults({
                     </div>
 
                     {/* Action */}
-                    {!isAdmin && item.status === "READY" && item.document && (
+                    {!isAdmin && ["AVAILABLE", "READY"].includes(item.status) && item.document && (
                       <button
                         type="button"
                         onClick={() =>

@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
   batchId: batch.id,
   documentTypeId: selectedTypeId,
   documentTypeVersionId: selectedVersionId,
-  status: "DRAFT",
+  status: "AVAILABLE",
 });
         uploadedDocumentId = document.id;
         uploadedFileName = document.fileName;
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
         if (user.role === "ADMIN") {
           publishAvailableEvent(document.id, user.id, {
             fileName: document.fileName,
-            status: "DRAFT",
+            status: "AVAILABLE",
             createdAt: document.createdAt,
             batchId: batch.id,
           });
@@ -187,11 +187,11 @@ export async function POST(request: NextRequest) {
               id: document.id,
               fileName: document.fileName,
               mimeType: document.mimeType,
-              status: "DRAFT",
+              status: "AVAILABLE",
               parseStatus: document.parseStatus,
             },
             success: true,
-            status: "DRAFT",
+            status: "AVAILABLE",
             batchId: batch.id,
           });
           continue;
@@ -214,7 +214,7 @@ export async function POST(request: NextRequest) {
     extractedText: parsed.text,
     parseStatus: "SUCCESS",
     parseMessage: null,
-    status: "DRAFT",
+    status: "AVAILABLE",
   });
 
         // 13. Classify document
@@ -228,17 +228,17 @@ export async function POST(request: NextRequest) {
     id: document.id,
     fileName: document.fileName,
     mimeType: document.mimeType,
-    status: "DRAFT",
+    status: "AVAILABLE",
     parseStatus: "SUCCESS",
   },
   success: true,
-  status: "DRAFT",
+  status: "AVAILABLE",
   batchId: batch.id,
   suggestions,
 });
         publishAvailableEvent(document.id, user.id, {
           fileName: document.fileName,
-          status: "DRAFT",
+          status: "AVAILABLE",
           createdAt: document.createdAt,
           batchId: batch.id,
         });
@@ -258,7 +258,7 @@ export async function POST(request: NextRequest) {
         if (uploadedDocumentId !== null) {
           publishAvailableEvent(uploadedDocumentId, user.id, {
             fileName: uploadedFileName,
-            status: "DRAFT",
+            status: "AVAILABLE",
             createdAt: uploadedAt,
             batchId: batch.id,
           });

@@ -127,12 +127,12 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       documentTypeId,
       documentTypeVersionId,
-      status: "DRAFT",
+      status: "AVAILABLE",
     });
 
     publishAvailableEvent(document.id, user.id, {
       fileName: document.fileName,
-      status: "DRAFT",
+      status: "AVAILABLE",
       createdAt: document.createdAt,
     });
 

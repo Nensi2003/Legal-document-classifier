@@ -49,14 +49,14 @@ describe("POST /api/documents/batch admin publishing", () => {
     expect(response.status).toBe(201);
     expect(batchCreateMock).toHaveBeenCalledWith({ userId: 2, status: "ACTIVE" });
     expect(createDocumentMock).toHaveBeenCalledTimes(2);
-    expect(createDocumentMock).toHaveBeenCalledWith(expect.objectContaining({ status: "DRAFT", batchId: 19 }));
+    expect(createDocumentMock).toHaveBeenCalledWith(expect.objectContaining({ status: "AVAILABLE", batchId: 19 }));
     expect(parseDocumentMock).not.toHaveBeenCalled();
     expect(classifyMock).not.toHaveBeenCalled();
     expect(publishAvailableMock).toHaveBeenCalledTimes(2);
-    expect(result.results.map((item: { status: string }) => item.status)).toEqual(["DRAFT", "DRAFT"]);
+    expect(result.results.map((item: { status: string }) => item.status)).toEqual(["AVAILABLE", "AVAILABLE"]);
   });
 
-  it("keeps ordinary-user batch uploads as globally available drafts after parsing", async () => {
+  it("keeps ordinary-user batch uploads available after parsing and before field entry", async () => {
     getCurrentUserMock.mockResolvedValue({ id: 8, role: "USER" });
     const body = new FormData();
     body.append("files", new File(["pdf"], "user-upload.pdf", { type: "application/pdf" }));
@@ -65,11 +65,11 @@ describe("POST /api/documents/batch admin publishing", () => {
     const result = await response.json();
 
     expect(response.status).toBe(201);
-    expect(createDocumentMock).toHaveBeenCalledWith(expect.objectContaining({ userId: 8, status: "DRAFT" }));
+    expect(createDocumentMock).toHaveBeenCalledWith(expect.objectContaining({ userId: 8, status: "AVAILABLE" }));
     expect(parseDocumentMock).toHaveBeenCalledTimes(1);
     expect(classifyMock).toHaveBeenCalledWith("contract text");
-    expect(documentUpdateMock).toHaveBeenCalledWith(expect.objectContaining({ status: "DRAFT", parseStatus: "SUCCESS" }));
-    expect(publishAvailableMock).toHaveBeenCalledWith(90, 8, expect.objectContaining({ status: "DRAFT" }));
-    expect(result.results[0].status).toBe("DRAFT");
+    expect(documentUpdateMock).toHaveBeenCalledWith(expect.objectContaining({ status: "AVAILABLE", parseStatus: "SUCCESS" }));
+    expect(publishAvailableMock).toHaveBeenCalledWith(90, 8, expect.objectContaining({ status: "AVAILABLE" }));
+    expect(result.results[0].status).toBe("AVAILABLE");
   });
 });

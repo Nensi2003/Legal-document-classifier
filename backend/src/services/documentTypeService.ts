@@ -18,7 +18,14 @@ export async function getDocumentTypeWithVersion(id: number, versionId?: number,
   const version = versionId === undefined
     ? (includeDraft && draft ? draft : active)
     : await db.orm.public.DocumentTypeVersion.where({ id: versionId, documentTypeId: id }).first();
-  if (!version) return versionId === undefined ? { ...documentType, jsonSchema: null, activeVersion: null, draftVersion: draft } : null;
+  const versionHistory = versions?.map((candidate) => ({
+    id: candidate.id,
+    versionNumber: candidate.versionNumber,
+    status: candidate.status,
+    createdAt: candidate.createdAt,
+    publishedAt: candidate.publishedAt,
+  }));
+  if (!version) return versionId === undefined ? { ...documentType, jsonSchema: null, activeVersion: null, draftVersion: draft, versions: versionHistory ?? [] } : null;
   return {
     ...documentType,
     jsonSchema: version.jsonSchema,
@@ -27,6 +34,7 @@ export async function getDocumentTypeWithVersion(id: number, versionId?: number,
     versionStatus: version.status,
     activeVersion: active ? { id: active.id, versionNumber: active.versionNumber, status: active.status } : null,
     draftVersion: draft ? { id: draft.id, versionNumber: draft.versionNumber, status: draft.status } : null,
+    versions: versionHistory ?? [],
   };
 }
 
@@ -69,11 +77,14 @@ export async function createDocumentTypeDraft(documentTypeId: number, schema?: J
   const versions = await getDocumentTypeVersions(documentTypeId);
   if (!versions.length) throw new Error("Document type has no versions");
   const latest = versions[versions.length - 1];
+  const sourceVersion = versions.find((version) => version.status === "ACTIVE") ?? latest;
   const draft = await db.orm.public.DocumentTypeVersion.create({
-    documentTypeId, versionNumber: latest.versionNumber + 1,
-    jsonSchema: schema ?? latest.jsonSchema, status: "DRAFT",
+    documentTypeId,
+    versionNumber: Math.max(...versions.map((version) => version.versionNumber)) + 1,
+    jsonSchema: schema ?? sourceVersion.jsonSchema,
+    status: "DRAFT",
   });
-  const fields = await db.orm.public.Field.where({ documentTypeVersionId: latest.id }).all();
+  const fields = await db.orm.public.Field.where({ documentTypeVersionId: sourceVersion.id }).all();
   for (const field of fields) {
     await db.orm.public.Field.create({
       name: field.name, type: field.type, required: field.required,
@@ -87,7 +98,9 @@ export async function publishDocumentTypeVersion(documentTypeId: number, version
   const target = await db.orm.public.DocumentTypeVersion.where({ id: versionId, documentTypeId }).first();
   if (!target) throw new Error("Document type version not found");
   if (target.status === "ACTIVE") return target;
-  if (target.status !== "DRAFT") throw new Error("Only draft versions can be published");
+  if (target.status !== "DRAFT" && target.status !== "ARCHIVED") {
+    throw new Error("Only draft or archived versions can be activated");
+  }
   const active = await getActiveDocumentTypeVersion(documentTypeId);
   if (active) await db.orm.public.DocumentTypeVersion.where({ id: active.id }).update({ status: "ARCHIVED" });
   return db.orm.public.DocumentTypeVersion.where({ id: versionId }).update({

@@ -4,6 +4,7 @@ import { db } from "@/prisma/db";
 import { getAccessibleDocumentById } from "@/services/documentAccessService";
 import { publishDocumentEvent } from "@/realtime/publisher";
 import { assertDocumentClaim } from "@/services/documentClaimService";
+import { getStatusAfterDraftSave } from "@/services/documentDraftStatusService";
 
 export async function PATCH(
   request: NextRequest,
@@ -55,23 +56,24 @@ export async function PATCH(
     const claim = await assertDocumentClaim(documentId, user.id);
     if (!claim.allowed) return NextResponse.json({ error: claim.error }, { status: claim.status });
 
+    const status = getStatusAfterDraftSave(body.draftData);
     const updatedDocument = await db.orm.public.Document
       .where({ id: documentId, updatedAt: body.expectedUpdatedAt, activeWorkerId: user.id, claimExpiresAt: document.claimExpiresAt })
       .update({
         draftData: body.draftData,
-        status: "DRAFT",
+        status,
       });
 
     if (!updatedDocument) return NextResponse.json({ error: "This document changed in another session. Reload it before saving again." }, { status: 409 });
-    publishDocumentEvent("DOCUMENT_UPDATED", documentId, user.id, { status: "DRAFT" });
-    if (document.status !== "DRAFT") {
-      publishDocumentEvent("DOCUMENT_STATUS_CHANGED", documentId, user.id, { previousStatus: document.status, status: "DRAFT" });
+    publishDocumentEvent("DOCUMENT_UPDATED", documentId, user.id, { status });
+    if (document.status !== status) {
+      publishDocumentEvent("DOCUMENT_STATUS_CHANGED", documentId, user.id, { previousStatus: document.status, status });
     }
 
     return NextResponse.json({
       message: "Draft saved successfully",
       documentId,
-      status: "DRAFT",
+      status,
       draftData: body.draftData,
       updatedAt: updatedDocument.updatedAt,
       document: updatedDocument,

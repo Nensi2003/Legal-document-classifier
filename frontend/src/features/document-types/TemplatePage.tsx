@@ -37,7 +37,7 @@ function mergeRecordedFields(documentType: DocumentType, fields: Awaited<ReturnT
   };
 }
 
-export function TemplatePage({ canPublish = false }: { canPublish?: boolean }) {
+export function TemplatePage({ canPublish = true }: { canPublish?: boolean }) {
   const [editingTemplate, setEditingTemplate] =
     useState<DocumentType | null>(null);
 

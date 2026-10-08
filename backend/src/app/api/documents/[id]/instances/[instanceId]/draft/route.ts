@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { JsonValue } from "@prisma/orm-postgres/target/codec-types";
 import { publishDocumentEvent } from "@/realtime/publisher";
 import { assertDocumentClaim } from "@/services/documentClaimService";
+import { getStatusAfterDraftSave } from "@/services/documentDraftStatusService";
 
 export const runtime = "nodejs";
 
@@ -75,11 +76,18 @@ export async function PATCH(
       return NextResponse.json({ error: "expectedUpdatedAt is required" }, { status: 400 });
     }
     const draftData = body.draftData as JsonValue;
+    const existingInstances = await db.orm.public.DocumentInstance
+      .where({ documentId })
+      .all();
+    const status = getStatusAfterDraftSave(
+      document.draftData,
+      ...existingInstances.map((candidate) => candidate.id === instanceIdNumber ? draftData : candidate.draftData),
+    );
 
     // Compare-and-swap the shared parent revision before saving the instance.
     const updatedDocument = await db.orm.public.Document
       .where({ id: documentId, updatedAt: body.expectedUpdatedAt, activeWorkerId: user.id, claimExpiresAt: document.claimExpiresAt })
-      .update({ status: "DRAFT" });
+      .update({ status });
     if (!updatedDocument) {
       return NextResponse.json({ error: "This document changed in another session. Reload it before saving again." }, { status: 409 });
     }
@@ -104,11 +112,11 @@ export async function PATCH(
     }
 
     publishDocumentEvent("DOCUMENT_UPDATED", documentId, user.id, {
-      status: "DRAFT",
+      status,
       instanceId: instanceIdNumber,
     });
-    if (document.status !== "DRAFT") {
-      publishDocumentEvent("DOCUMENT_STATUS_CHANGED", documentId, user.id, { previousStatus: document.status, status: "DRAFT" });
+    if (document.status !== status) {
+      publishDocumentEvent("DOCUMENT_STATUS_CHANGED", documentId, user.id, { previousStatus: document.status, status });
     }
 
     return NextResponse.json({

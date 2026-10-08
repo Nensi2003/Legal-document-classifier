@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getDocumentTypes,
   createDocumentType,
+  getDocumentTypeVersions,
 } from "@/services/documentTypeService";
 import { getActiveDocumentTypeVersion } from "@/services/documentTypeService";
 
@@ -9,7 +10,9 @@ export async function GET() {
   try {
     const documentTypes = await getDocumentTypes();
     return NextResponse.json(await Promise.all(documentTypes.map(async (documentType) => {
-      const activeVersion = await getActiveDocumentTypeVersion(documentType.id);
+      const versions = await getDocumentTypeVersions(documentType.id);
+      const activeVersion = versions.find((version) => version.status === "ACTIVE") ?? await getActiveDocumentTypeVersion(documentType.id);
+      const draftVersion = versions.filter((version) => version.status === "DRAFT").at(-1) ?? null;
       return {
         ...documentType,
         activeVersion: activeVersion ? {
@@ -17,6 +20,14 @@ export async function GET() {
           versionNumber: activeVersion.versionNumber,
           status: activeVersion.status,
         } : null,
+        draftVersion: draftVersion ? { id: draftVersion.id, versionNumber: draftVersion.versionNumber, status: draftVersion.status } : null,
+        versions: versions.map((version) => ({
+          id: version.id,
+          versionNumber: version.versionNumber,
+          status: version.status,
+          createdAt: version.createdAt,
+          publishedAt: version.publishedAt,
+        })),
       };
     })));
   } catch (error) {

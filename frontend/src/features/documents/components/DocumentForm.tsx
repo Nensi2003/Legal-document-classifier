@@ -38,6 +38,8 @@ interface DocumentFormProps {
   userId: number;
   activeWorkerId?: number | null;
   activeWorkerName?: string | null;
+  backLabel?: string;
+  compact?: boolean;
   onBack: () => void;
 }
 
@@ -46,6 +48,8 @@ export function DocumentForm({
   userId,
   activeWorkerId,
   activeWorkerName,
+  backLabel = "← Back to Documents",
+  compact = false,
   onBack,
 }: DocumentFormProps) {
   const [currentDocument, setCurrentDocument] =
@@ -761,7 +765,7 @@ if (groupedErrors.length === 0) {
           onClick={onBack}
           className="mb-5 text-sm font-medium text-slate-500 transition hover:text-slate-900"
         >
-          ← Back to Documents
+          {backLabel}
         </button>
 
         <p
@@ -787,7 +791,7 @@ if (groupedErrors.length === 0) {
           onClick={onBack}
           className="mb-5 text-sm font-medium text-slate-500 transition hover:text-slate-900"
         >
-          ← Back to Documents
+          {backLabel}
         </button>
 
         <p className="text-sm text-slate-500">
@@ -809,7 +813,7 @@ if (groupedErrors.length === 0) {
     return (
       <div className="rounded-xl border border-red-200 bg-red-50 p-6">
         <button type="button" onClick={onBack} className="mb-5 text-sm font-medium text-slate-500 hover:text-slate-900">
-          ← Back to Documents
+          {backLabel}
         </button>
         <p role="alert" className="text-sm font-medium text-red-700">
           The template schema for this document version is unavailable.
@@ -831,7 +835,7 @@ if (groupedErrors.length === 0) {
           onClick={onBack}
           className="mb-5 text-sm font-medium text-slate-500 transition hover:text-slate-900"
         >
-          ← Back to Documents
+          {backLabel}
         </button>
 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -959,7 +963,7 @@ if (groupedErrors.length === 0) {
           MAIN WORKSPACE
           ===================================================== */}
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <div className={`grid items-start gap-6 ${compact ? "grid-cols-1" : "xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]"}`}>
 
         {/* =================================================
             LEFT: DOCUMENT / EXTRACTED TEXT

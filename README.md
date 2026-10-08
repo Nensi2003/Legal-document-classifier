@@ -5,7 +5,7 @@ A web application for uploading legal documents, extracting and reviewing their 
 ## Features
 
 - Upload individual documents or publish batches for users to process
-- Extract text from PDF, DOCX, CSV, and image files, with OCR for supported scans
+- Extract text from PDF, DOCX, CSV, and image files
 - Review detected document boundaries and inspect source pages
 - Create versioned document templates and generate schema-validated JSON
 - Save drafts and resume document processing

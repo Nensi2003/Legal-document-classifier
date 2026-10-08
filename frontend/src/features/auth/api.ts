@@ -102,3 +102,20 @@ export async function logout(): Promise<void> {
     throw new Error("Logout failed");
   }
 }
+
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const response = await fetch("http://localhost:3000/api/auth/change-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error ?? "Failed to change password");
+  }
+}

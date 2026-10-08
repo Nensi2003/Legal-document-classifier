@@ -16,6 +16,7 @@ interface DocumentBoundaryReviewProps {
   fileName: string;
   mimeType: string;
   readOnly?: boolean;
+  backLabel?: string;
   onConfirmed: () => void;
   onBackToDocuments: () => void;
 }
@@ -25,6 +26,7 @@ export function DocumentBoundaryReview({
   fileName,
   mimeType,
   readOnly = false,
+  backLabel = "← Back to Documents",
   onConfirmed,
   onBackToDocuments,
 }: DocumentBoundaryReviewProps) {
@@ -341,7 +343,7 @@ export function DocumentBoundaryReview({
           disabled={saving}
           className="mb-4 text-sm font-medium text-slate-500 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          ← Back to Documents
+          {backLabel}
         </button>
 
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">

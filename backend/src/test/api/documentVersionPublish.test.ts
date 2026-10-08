@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { requireAdminMock, publishMock } = vi.hoisted(() => ({
-  requireAdminMock: vi.fn(),
+const { getCurrentUserMock, publishMock } = vi.hoisted(() => ({
+  getCurrentUserMock: vi.fn(),
   publishMock: vi.fn(),
 }));
 
-vi.mock("@/lib/auth", () => ({ requireAdmin: requireAdminMock }));
+vi.mock("@/lib/auth", () => ({ getCurrentUser: getCurrentUserMock }));
 vi.mock("@/services/documentTypeService", () => ({ publishDocumentTypeVersion: publishMock }));
 
 import { POST } from "../../app/api/document-types/[id]/versions/[versionId]/publish/route";
@@ -15,19 +15,19 @@ describe("POST /api/document-types/:id/versions/:versionId/publish", () => {
     vi.clearAllMocks();
   });
 
-  it("rejects non-admin users before publishing", async () => {
-    requireAdminMock.mockResolvedValue({ user: null, error: "Admin access required" });
+  it("rejects unauthenticated users before publishing", async () => {
+    getCurrentUserMock.mockResolvedValue(null);
 
     const response = await POST(new Request("http://localhost"), {
       params: Promise.resolve({ id: "1", versionId: "2" }),
     });
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(401);
     expect(publishMock).not.toHaveBeenCalled();
   });
 
-  it("allows an authenticated admin to publish the requested version", async () => {
-    requireAdminMock.mockResolvedValue({ user: { id: 1, role: "ADMIN" }, error: null });
+  it("allows an authenticated ordinary user to publish the requested version", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: 7, role: "USER" });
     publishMock.mockResolvedValue({ id: 2, status: "ACTIVE" });
 
     const response = await POST(new Request("http://localhost"), {

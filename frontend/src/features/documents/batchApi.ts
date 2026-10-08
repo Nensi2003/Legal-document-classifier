@@ -5,6 +5,9 @@ export interface BatchDocumentResult {
     mimeType: string;
     status: string;
     parseStatus: string;
+    activeWorkerId?: number | null;
+    activeWorkerName?: string | null;
+    claimExpiresAt?: string | null;
   };
   fileName?: string;
   success: boolean;
@@ -37,6 +40,9 @@ export interface BatchDetails {
     documentTypeId?: number | null;
     createdAt: string;
     updatedAt: string;
+    activeWorkerId?: number | null;
+    activeWorkerName?: string | null;
+    claimExpiresAt?: string | null;
   }>;
 }
 

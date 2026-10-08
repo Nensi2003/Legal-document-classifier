@@ -70,6 +70,24 @@ export async function loginUser(
   return user;
 }
 
+export async function changeUserPassword(
+  userId: number,
+  currentPassword: string,
+  newPassword: string,
+) {
+  const user = await db.orm.public.User.where({ id: userId }).first();
+  if (!user) throw new Error("User not found");
+
+  const passwordMatches = await bcrypt.compare(currentPassword, user.password);
+  if (!passwordMatches) throw new Error("Current password is incorrect");
+  if (currentPassword === newPassword) {
+    throw new Error("New password must be different from the current password");
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 12);
+  await db.orm.public.User.where({ id: userId }).update({ password: hashedPassword });
+}
+
 export async function createSession(userId: number) {
   const sessionId = crypto.randomUUID();
 

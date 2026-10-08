@@ -4,6 +4,7 @@ import {
   getAdminDocumentTypeJSON,
   type AdminDocumentType,
 } from "./api";
+import { publishDocumentTypeVersion } from "../document-types/api";
 
 interface AdminDocumentTypesProps {
   onBack: () => void;
@@ -29,6 +30,8 @@ export function AdminDocumentTypes({
   const [jsonViewer, setJsonViewer] = useState<{ title: string; documentTypeId: number; data: unknown } | null>(null);
   const [jsonVersion, setJsonVersion] = useState("all");
   const [copyMessage, setCopyMessage] = useState("");
+  const [publishingVersionId, setPublishingVersionId] = useState<number | null>(null);
+  const [publishError, setPublishError] = useState("");
 
   useEffect(() => {
     async function loadDocumentTypes() {
@@ -91,6 +94,19 @@ export function AdminDocumentTypes({
       setJsonViewer({ ...jsonViewer, data });
     } catch (error) {
       setError(error instanceof Error ? error.message : "Failed to load JSON version.");
+    }
+  }
+
+  async function publishVersion(documentTypeId: number, versionId: number) {
+    try {
+      setPublishError("");
+      setPublishingVersionId(versionId);
+      await publishDocumentTypeVersion(documentTypeId, versionId);
+      setDocumentTypes(await getAdminDocumentTypes());
+    } catch (error) {
+      setPublishError(error instanceof Error ? error.message : "Failed to publish template version.");
+    } finally {
+      setPublishingVersionId(null);
     }
   }
 
@@ -174,6 +190,11 @@ export function AdminDocumentTypes({
       </div>
 
       {/* Document types */}
+      {publishError && (
+        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {publishError}
+        </p>
+      )}
       {documentTypes.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <p className="text-sm text-slate-500">
@@ -224,6 +245,28 @@ export function AdminDocumentTypes({
                   >
                     Edit fields / publish
                   </button>
+                  {documentType.versions.filter((version) => version.status === "DRAFT").map((version) => (
+                    <button
+                      key={version.id}
+                      type="button"
+                      onClick={() => void publishVersion(documentType.id, version.id)}
+                      disabled={publishingVersionId !== null}
+                      className="mr-3 mt-2 rounded-lg bg-amber-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-amber-800 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {publishingVersionId === version.id ? "Publishing…" : `Publish v${version.versionNumber}`}
+                    </button>
+                  ))}
+                  {documentType.versions.filter((version) => version.status === "ARCHIVED").map((version) => (
+                    <button
+                      key={version.id}
+                      type="button"
+                      onClick={() => void publishVersion(documentType.id, version.id)}
+                      disabled={publishingVersionId !== null}
+                      className="mr-3 mt-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {publishingVersionId === version.id ? "Activating…" : `Activate v${version.versionNumber}`}
+                    </button>
+                  ))}
                   <button
                     type="button"
                     onClick={() =>

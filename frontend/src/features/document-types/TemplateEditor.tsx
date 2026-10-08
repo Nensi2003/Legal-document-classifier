@@ -20,7 +20,7 @@ interface TemplateEditorProps {
 
 export function TemplateEditor({
   documentType,
-  canPublish = false,
+  canPublish = true,
   onSaved,
   onCancel,
 }: TemplateEditorProps) {
@@ -137,6 +137,22 @@ if (hasDuplicateFieldNames) {
       setPublishing(false);
     }
   }
+
+  async function handleActivateArchivedVersion(versionId: number) {
+    if (!documentType) return;
+    try {
+      setPublishing(true);
+      setError("");
+      await publishDocumentTypeVersion(documentType.id, versionId);
+      onSaved();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to activate template version.");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  const archivedVersions = documentType?.versions?.filter((version) => version.status === "ARCHIVED") ?? [];
 
   const fieldCount = Object.keys(
     schema.properties ?? {}
@@ -319,6 +335,32 @@ if (hasDuplicateFieldNames) {
             {publishing ? "Publishing…" : `Publish v${pendingPublishVersion.versionNumber}`}
           </button>
         </div>
+      )}
+      {pendingPublishVersion && !canPublish && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          Draft v{pendingPublishVersion.versionNumber} is saved, but publishing is disabled for this account.
+        </p>
+      )}
+      {archivedVersions.length > 0 && (
+        <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <h3 className="text-sm font-semibold text-slate-900">Previously published versions</h3>
+          <p className="mt-1 text-sm text-slate-600">
+            Activate an earlier version to use it for new documents. Existing documents keep their saved version.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {archivedVersions.map((version) => (
+              <button
+                key={version.id}
+                type="button"
+                onClick={() => void handleActivateArchivedVersion(version.id)}
+                disabled={publishing || loading}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60"
+              >
+                {publishing ? "Activating…" : `Activate v${version.versionNumber}`}
+              </button>
+            ))}
+          </div>
+        </section>
       )}
       <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:justify-end">
         <button

@@ -9,6 +9,7 @@ export interface DocumentType {
   versionStatus?: string | null;
   activeVersion?: { id: number; versionNumber: number; status: string } | null;
   draftVersion?: { id: number; versionNumber: number; status: string } | null;
+  versions?: Array<{ id: number; versionNumber: number; status: string; createdAt?: string; publishedAt?: string | null }>;
 }
 
 export interface Field {

@@ -360,7 +360,8 @@ if (
   // --------------------------------------------------
 
   async function handleOpenDocument(
-    documentId: number
+    documentId: number,
+    keepBatchResults = false,
   ) {
     try {
       let document = await getDocumentById(documentId);
@@ -378,8 +379,12 @@ if (
       }
 
       setSelectedDocument(document);
-      setCurrentPage("document");
-      updateAppUrl("document", document.id);
+      if (keepBatchResults) {
+        updateAppUrl("batch-upload");
+      } else {
+        setCurrentPage("document");
+        updateAppUrl("document", document.id);
+      }
     } catch (error) {
       console.error(
         "Failed to load document:",
@@ -393,13 +398,8 @@ if (
   // Open draft
   // --------------------------------------------------
 
-  function handleOpenDocumentFromBatch(
-    documentId: number
-  ) {
-    window.open(
-      `${window.location.origin}?documentId=${documentId}`,
-      "_blank"
-    );
+  function handleOpenDocumentFromBatch(documentId: number) {
+    return handleOpenDocument(documentId, true);
   }
 
 
@@ -464,20 +464,81 @@ if (
         userRole={user.role}
         onLogout={handleLogout}
       >
-        <BatchUpload
-          isAdmin={user.role === "ADMIN"}
-          onBackToDashboard={() => handleNavigate("admin-dashboard")}
-          onComplete={(result) => {
-            console.log(
-              "Batch upload completed:",
-              result
-            );
-          }}
-          onCancel={() =>
-            handleNavigate("dashboard")
-          }
-          onOpenDocument={handleOpenDocumentFromBatch}
-        />
+        <div className={selectedDocument ? "grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]" : ""}>
+          <div className="min-w-0">
+            <BatchUpload
+              isAdmin={user.role === "ADMIN"}
+              onBackToDashboard={() => handleNavigate("admin-dashboard")}
+              onComplete={(result) => {
+                console.log("Batch upload completed:", result);
+              }}
+              onCancel={() => handleNavigate("dashboard")}
+              onOpenDocument={handleOpenDocumentFromBatch}
+            />
+          </div>
+
+          {selectedDocument && (
+            <aside className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto">
+              <DocumentCollaborationBar documentId={selectedDocument.id} userId={user.id} activeWorkerId={selectedDocument.activeWorkerId} activeWorkerName={selectedDocument.activeWorkerName} />
+
+              {selectedDocument.status === "REVIEW" ? (
+                <DocumentBoundaryReview
+                  documentId={selectedDocument.id}
+                  fileName={selectedDocument.fileName}
+                  mimeType={selectedDocument.mimeType}
+                  readOnly={selectedDocument.activeWorkerId != null && selectedDocument.activeWorkerId !== user.id}
+                  backLabel="← Back to batch results"
+                  onBackToDocuments={() => {
+                    setSelectedDocument(null);
+                    updateAppUrl("batch-upload");
+                  }}
+                  onConfirmed={async () => {
+                    try {
+                      setSelectedDocument(await getDocumentById(selectedDocument.id));
+                    } catch (error) {
+                      console.error("Failed to reload document after confirming boundaries:", error);
+                    }
+                  }}
+                />
+              ) : !selectedDocument.documentTypeId ? (
+                <div className="mt-4 rounded-xl border border-slate-200 p-5">
+                  {selectedDocument.status === "COMPLETED" || (selectedDocument.activeWorkerId != null && selectedDocument.activeWorkerId !== user.id) ? (
+                    <>
+                      <h2 className="text-lg font-semibold text-slate-900">Document is read-only</h2>
+                      <p className="mt-2 text-sm text-slate-500">
+                        {selectedDocument.status === "COMPLETED" ? "This document is complete and read-only." : `Currently working: ${selectedDocument.activeWorkerName || "Another user"}. You can view this document, but cannot edit it.`}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="text-lg font-semibold text-slate-900">Select Document Type</h2>
+                      <p className="mt-2 text-sm text-slate-500">Choose the template that matches this document.</p>
+                      <div className="mt-5">
+                        <DocumentTypeSelector
+                          documentId={selectedDocument.id}
+                          onTypeSelected={(documentTypeId) => setSelectedDocument((current) => current ? { ...current, documentTypeId } : null)}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <DocumentForm
+                  documentId={selectedDocument.id}
+                  userId={user.id}
+                  activeWorkerId={selectedDocument.activeWorkerId}
+                  activeWorkerName={selectedDocument.activeWorkerName}
+                  backLabel="← Back to batch results"
+                  compact
+                  onBack={() => {
+                    setSelectedDocument(null);
+                    updateAppUrl("batch-upload");
+                  }}
+                />
+              )}
+            </aside>
+          )}
+        </div>
       </AppLayout>
     );
   }
@@ -723,7 +784,7 @@ if (
         userRole={user.role}
         onLogout={handleLogout}
       >
-        <TemplatePage canPublish={user.role === "ADMIN"} />
+        <TemplatePage canPublish />
       </AppLayout>
     );
   }

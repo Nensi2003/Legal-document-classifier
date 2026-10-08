@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { publishDocumentTypeVersion } from "@/services/documentTypeService";
 
 export async function POST(_request: Request, context: { params: Promise<{ id: string; versionId: string }> }) {
-  const { user, error } = await requireAdmin();
-  if (error || !user) {
-    return NextResponse.json({ error }, { status: error === "Not authenticated" ? 401 : 403 });
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
   const { id, versionId } = await context.params;
   const typeId = Number(id), version = Number(versionId);
