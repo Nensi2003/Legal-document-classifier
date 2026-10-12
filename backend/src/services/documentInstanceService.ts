@@ -2,6 +2,7 @@ import { db } from "@/prisma/db";
 import { parseDocument } from "@/parsers/documentParser";
 import { getAccessibleDocumentById } from "@/services/documentAccessService";
 import { assertDocumentClaim } from "@/services/documentClaimService";
+import { readStoredFile } from "@/lib/fileStorage";
 
 async function getDocumentAndInstance(
   documentId: number,
@@ -47,7 +48,7 @@ async function getParsedPages(
     );
   }
 
-  const parsedDocument = await parseDocument(filePath, mimeType);
+  const parsedDocument = await parseDocument(await readStoredFile(filePath), mimeType);
 
   if (!parsedDocument.pages || parsedDocument.pages.length === 0) {
     throw new Error("Document does not contain page-level text");

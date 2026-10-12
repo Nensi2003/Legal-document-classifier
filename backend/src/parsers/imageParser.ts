@@ -4,9 +4,9 @@ import { createWorker } from "tesseract.js";
 import type { ParsedDocument } from "./types";
 
 export async function parseImage(
-  filePath: string
+  filePath: string | Buffer
 ): Promise<ParsedDocument> {
-  const image = await readFile(filePath);
+  const image = typeof filePath === "string" ? await readFile(filePath) : filePath;
 
   const workerPath = path.join(
     process.cwd(),

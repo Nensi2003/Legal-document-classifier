@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "../../prisma/db";
-import { claimDocument, DocumentClaimConflictError, releaseDocumentClaim, renewDocumentClaim } from "../../services/documentClaimService";
+import { assertDocumentClaim, claimDocument, DocumentClaimConflictError, releaseDocumentClaim, renewDocumentClaim } from "../../services/documentClaimService";
 
 describe("document claims", () => {
   beforeEach(() => vi.restoreAllMocks());
@@ -37,6 +37,31 @@ describe("document claims", () => {
   it("does not allow completed documents to be claimed", async () => {
     vi.spyOn(db.orm.public.Document, "where").mockReturnValue({ first: vi.fn().mockResolvedValue({ id: 12, status: "COMPLETED", activeWorkerId: null, claimExpiresAt: null }) } as never);
     await expect(claimDocument(12, 2)).rejects.toBeInstanceOf(DocumentClaimConflictError);
+  });
+
+  it("allows editing only for the current owner of a live claim", async () => {
+    const activeDocument = {
+      id: 12,
+      status: "DRAFT",
+      activeWorkerId: 7,
+      claimExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    vi.spyOn(db.orm.public.Document, "where").mockReturnValue({ first: vi.fn().mockResolvedValue(activeDocument) } as never);
+
+    await expect(assertDocumentClaim(12, 7)).resolves.toEqual({ allowed: true });
+    await expect(assertDocumentClaim(12, 8)).resolves.toMatchObject({ allowed: false, status: 403 });
+  });
+
+  it("rejects edits to completed or expired documents", async () => {
+    const completedDocument = { id: 12, status: "COMPLETED", activeWorkerId: 7, claimExpiresAt: new Date(Date.now() + 60_000).toISOString() };
+    const expiredDocument = { id: 12, status: "DRAFT", activeWorkerId: 7, claimExpiresAt: new Date(Date.now() - 1_000).toISOString() };
+    const first = vi.fn()
+      .mockResolvedValueOnce(completedDocument)
+      .mockResolvedValueOnce(expiredDocument);
+    vi.spyOn(db.orm.public.Document, "where").mockReturnValue({ first } as never);
+
+    await expect(assertDocumentClaim(12, 7)).resolves.toMatchObject({ allowed: false, status: 409 });
+    await expect(assertDocumentClaim(12, 7)).resolves.toMatchObject({ allowed: false, status: 403 });
   });
 
   it("renews only a live claim owned by the same user and never reacquires a released claim", async () => {

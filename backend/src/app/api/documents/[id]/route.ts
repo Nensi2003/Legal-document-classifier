@@ -1,5 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
-import { deleteDocument } from "@/services/documentService";
+import { deleteDocument, SharePointManagedDocumentError } from "@/services/documentService";
 import { getAccessibleDocumentById } from "@/services/documentAccessService";
 import { publishDocumentEvent } from "@/realtime/publisher";
 import { NextRequest, NextResponse } from "next/server";
@@ -116,6 +116,9 @@ export async function DELETE(
       },
     });
   } catch (error) {
+    if (error instanceof SharePointManagedDocumentError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error("Delete document error:", error);
 
     return NextResponse.json(

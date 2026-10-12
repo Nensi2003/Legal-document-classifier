@@ -6,7 +6,7 @@ import { detectDocumentBoundaries } from "@/detection/documentBoundaryDetector";
 import { db } from "@/prisma/db";
 import { NextRequest, NextResponse } from "next/server";
 
-import { getStoredFilePath } from "@/lib/fileStorage";
+import { readStoredFile } from "@/lib/fileStorage";
 import { getAccessibleDocumentById } from "@/services/documentAccessService";
 import { publishDocumentEvent } from "@/realtime/publisher";
 import { assertDocumentClaim } from "@/services/documentClaimService";
@@ -49,10 +49,8 @@ export async function POST(
     if (!claim.allowed) return NextResponse.json({ error: claim.error }, { status: claim.status });
 
     try {
-  const filePath = getStoredFilePath(document.filePath);
-
   const parsedDocument = await parseDocument(
-    filePath,
+    await readStoredFile(document.filePath),
     document.mimeType
   );
 

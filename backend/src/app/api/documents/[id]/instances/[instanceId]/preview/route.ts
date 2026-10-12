@@ -6,7 +6,7 @@ import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
-import { getStoredFilePath } from "@/lib/fileStorage";
+import { withStoredFilePath } from "@/lib/fileStorage";
 import { db } from "@/prisma/db";
 import { getAccessibleDocumentById } from "@/services/documentAccessService";
 
@@ -45,10 +45,10 @@ export async function GET(
 
     temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "document-instance-preview-"));
     const outputPrefix = path.join(temporaryDirectory, "page");
-    await execFileAsync("pdftoppm", [
+    await withStoredFilePath(document.filePath, (filePath) => execFileAsync("pdftoppm", [
       "-f", String(page), "-l", String(page), "-scale-to", "1600", "-png", "-singlefile",
-      getStoredFilePath(document.filePath), outputPrefix,
-    ], { timeout: 20_000, maxBuffer: 1024 * 1024 });
+      filePath, outputPrefix,
+    ], { timeout: 20_000, maxBuffer: 1024 * 1024 }), document.fileName);
 
     const image = await readFile(`${outputPrefix}.png`);
     return new NextResponse(new Uint8Array(image), {

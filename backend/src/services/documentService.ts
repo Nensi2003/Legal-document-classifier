@@ -1,6 +1,14 @@
 import { db } from "@/prisma/db";
 import { getActiveDocumentTypeVersion } from "./documentTypeService";
 import { getAccessibleDocumentById } from "./documentAccessService";
+import { isSharePointFileReference } from "@/lib/sharePointStorage";
+
+export class SharePointManagedDocumentError extends Error {
+  constructor() {
+    super("This document is stored in SharePoint and cannot be deleted from the app. Manage its source file in SharePoint.");
+    this.name = "SharePointManagedDocumentError";
+  }
+}
 
 export async function createDocument(data: {
   fileName: string;
@@ -11,6 +19,7 @@ export async function createDocument(data: {
   documentTypeId?: number;
   documentTypeVersionId?: number;
   status?: string;
+  createdAt?: string;
 }) {
   return db.orm.public.Document.create({
     fileName: data.fileName,
@@ -21,6 +30,7 @@ export async function createDocument(data: {
     documentTypeId: data.documentTypeId,
     documentTypeVersionId: data.documentTypeVersionId,
     status: data.status,
+    createdAt: data.createdAt,
   });
 }
 export async function getDocuments(userId: number) {
@@ -44,6 +54,7 @@ export async function deleteDocument(id: number, userId: number) {
   if (!document) {
     return null;
   }
+  if (isSharePointFileReference(document.filePath)) throw new SharePointManagedDocumentError();
 
   // Delete generated JSON first because it references the document.
   await db.orm.public.GeneratedJSON
@@ -69,6 +80,7 @@ export async function deleteDocumentAsAdmin(id: number) {
     .first();
 
   if (!document) return null;
+  if (isSharePointFileReference(document.filePath)) throw new SharePointManagedDocumentError();
 
   // GeneratedJSON has a restrictive relation, so remove it before the
   // document. DocumentInstance rows are removed by the document FK cascade.

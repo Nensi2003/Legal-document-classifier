@@ -1,9 +1,8 @@
-import { readFile } from "fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getAccessibleDocumentById } from "@/services/documentAccessService";
 
-import { getStoredFilePath } from "@/lib/fileStorage";
+import { readStoredFile } from "@/lib/fileStorage";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -42,11 +41,9 @@ export async function GET(
       );
     }
 
-    const filePath = getStoredFilePath(document.filePath);
+    const file = await readStoredFile(document.filePath);
 
-const file = await readFile(filePath);
-
-    return new NextResponse(file, {
+    return new NextResponse(new Uint8Array(file), {
       status: 200,
       headers: {
         "Content-Type": document.mimeType,

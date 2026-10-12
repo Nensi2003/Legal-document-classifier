@@ -1,6 +1,6 @@
 import { requireAdmin } from "@/lib/auth";
 import { publishDocumentEvent } from "@/realtime/publisher";
-import { deleteDocumentAsAdmin } from "@/services/documentService";
+import { deleteDocumentAsAdmin, SharePointManagedDocumentError } from "@/services/documentService";
 import { NextResponse } from "next/server";
 
 export async function DELETE(
@@ -35,6 +35,9 @@ export async function DELETE(
       document: { id: document.id, fileName: document.fileName },
     });
   } catch (cause) {
+    if (cause instanceof SharePointManagedDocumentError) {
+      return NextResponse.json({ error: cause.message }, { status: 409 });
+    }
     console.error("Admin document deletion error:", cause);
     return NextResponse.json(
       { error: "Something went wrong while deleting the document" },

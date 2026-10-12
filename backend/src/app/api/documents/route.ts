@@ -8,6 +8,7 @@ import { db } from "@/prisma/db";
 import { createDocument } from "@/services/documentService";
 import { getDocumentsAccessibleToUser } from "@/services/documentAccessService";
 import { publishAvailableEvent } from "@/realtime/publisher";
+import { importSharePointInboxDocuments } from "@/services/sharePointImportService";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -173,6 +174,14 @@ export async function GET() {
         },
         { status: 401 }
       );
+    }
+
+    // Direct SharePoint uploads become normal AVAILABLE documents for all
+    // processing users. Keep the list usable if SharePoint is temporarily down.
+    try {
+      await importSharePointInboxDocuments();
+    } catch (sharePointError) {
+      console.error("SharePoint inbox sync failed:", sharePointError);
     }
 
     // All documents are visible to authenticated processing users.

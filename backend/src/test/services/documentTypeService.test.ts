@@ -247,6 +247,19 @@ describe("documentTypeService", () => {
       expect(db.orm.public.DocumentTypeVersion.update).toHaveBeenNthCalledWith(1, { status: "ARCHIVED" });
       expect(db.orm.public.DocumentTypeVersion.update).toHaveBeenNthCalledWith(2, expect.objectContaining({ status: "ACTIVE" }));
     });
+
+    it("reactivates an archived version as a rollback and archives the current version", async () => {
+      vi.spyOn(db.orm.public.DocumentTypeVersion, "where").mockReturnValue(db.orm.public.DocumentTypeVersion);
+      vi.spyOn(db.orm.public.DocumentTypeVersion, "first")
+        .mockResolvedValueOnce({ id: 1, status: "ARCHIVED" } as unknown as never)
+        .mockResolvedValueOnce({ id: 3, status: "ACTIVE" } as unknown as never);
+      const update = vi.spyOn(db.orm.public.DocumentTypeVersion, "update").mockResolvedValue({ id: 1, status: "ACTIVE" } as unknown as never);
+
+      await publishDocumentTypeVersion(4, 1);
+
+      expect(update).toHaveBeenNthCalledWith(1, { status: "ARCHIVED" });
+      expect(update).toHaveBeenNthCalledWith(2, expect.objectContaining({ status: "ACTIVE", publishedAt: expect.any(String) }));
+    });
   });
 
   describe("deleteDocumentType", () => {

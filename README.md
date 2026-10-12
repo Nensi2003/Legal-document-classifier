@@ -25,6 +25,7 @@ A web application for uploading legal documents, extracting and reviewing their 
 
 1. Install and start Docker Desktop.
 2. In the project root, make sure `.env` contains a `JWT_SECRET` value. Keep `.env` local; it is ignored by Git.
+   SharePoint is optional. To enable direct uploads, configure the SharePoint values shown in [`.env.example`](.env.example). The Entra app needs Microsoft Graph application read access to the configured site/library, and users need upload access to the inbox folder. Set `VITE_SHAREPOINT_UPLOAD_URL` to the browser URL of that folder. New files are synced into the app's Available Documents list while users have that list open. Uploader identity is matched by email; if Graph omits an email, `SHAREPOINT_USER_MAP` can map a SharePoint user object ID to an app email, for example `{"entra-object-id":"user@company.com"}`.
 3. Build and start PostgreSQL, the backend, and the frontend:
 
    ```bash

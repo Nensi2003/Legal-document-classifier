@@ -3,9 +3,9 @@ import mammoth from "mammoth";
 import type { ParsedDocument } from "./types";
 
 export async function parseDocx(
-  filePath: string
+  filePath: string | Buffer
 ): Promise<ParsedDocument> {
-  const buffer = await readFile(filePath);
+  const buffer = typeof filePath === "string" ? await readFile(filePath) : filePath;
 
   const result = await mammoth.extractRawText({
     buffer,
