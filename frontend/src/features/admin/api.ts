@@ -22,6 +22,8 @@ export interface AdminDocumentType {
   description: string | null;
   createdAt: string;
   updatedAt: string;
+  activeVersion: { id: number; versionNumber: number; status: string } | null;
+  versions: Array<{ id: number; versionNumber: number; status: string; createdAt: string; publishedAt: string | null }>;
 }
 
 export async function getAdminStats(): Promise<AdminStats> {
@@ -89,6 +91,8 @@ export interface AdminDocument {
   userName: string | null;
   userEmail: string | null;
   documentTypeName: string | null;
+  documentTypeVersionNumber?: number | null;
+  uploaderRole?: string | null;
 }
 
 export async function getAdminDocuments(): Promise<
@@ -110,13 +114,26 @@ export async function getAdminDocuments(): Promise<
   return data.documents;
 }
 
+export async function deleteAdminDocument(documentId: number): Promise<void> {
+  const response = await fetch(
+    `http://localhost:3000/api/admin/documents/${documentId}`,
+    { method: "DELETE", credentials: "include" },
+  );
+
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result.error ?? "Failed to delete document");
+  }
+}
+
 
 
 export async function getAdminDocumentTypeJSON(
-  documentTypeId: number
+  documentTypeId: number,
+  versionNumber?: number,
 ) {
   const response = await fetch(
-    `http://localhost:3000/api/admin/document-types/${documentTypeId}/json`,
+    `http://localhost:3000/api/admin/document-types/${documentTypeId}/json${versionNumber ? `?version=${versionNumber}` : ""}`,
     {
       credentials: "include",
     }

@@ -2,7 +2,7 @@ FROM node:22-bookworm
 
 # Install LibreOffice for legacy .doc conversion
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libreoffice && \
+    apt-get install -y --no-install-recommends libreoffice poppler-utils && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

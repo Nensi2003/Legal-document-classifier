@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   getDocumentById,
+  claimDocument,
   assignDocumentType,
   uploadDocument,
   getDocuments,
@@ -10,6 +11,14 @@ import {
 describe("Documents API", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("claims an editable document and treats another user's active claim as a view-only result", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({ claimed: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "Currently working: Alex" }), { status: 409 }));
+    await expect(claimDocument(9)).resolves.toBe(true);
+    await expect(claimDocument(9)).resolves.toBe(false);
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:3000/api/documents/9/claim", { method: "POST", credentials: "include" });
   });
 
   it("gets a document successfully", async () => {

@@ -6,20 +6,26 @@ import {
   type BatchUploadResponse,
   // type BatchDocumentResult,
 } from "./batchApi";
+import { getDocumentTypes, type DocumentType } from "../document-types/api";
+import { realtimeClient } from "../realtime/realtimeClient";
 
 interface BatchUploadProps {
+  isAdmin?: boolean;
+  onBackToDashboard?: () => void;
   onComplete: (result: BatchUploadResponse) => void;
   onCancel: () => void;
-  onOpenDraft: (documentId: number) => void;
+  onOpenDocument: (documentId: number) => void;
 }
 
   const ACTIVE_BATCH_KEY = "activeBatchId";
 
 
 export function BatchUpload({
+  isAdmin = false,
+  onBackToDashboard,
   onComplete,
   onCancel,
-  onOpenDraft,
+  onOpenDocument,
 }: BatchUploadProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -27,6 +33,12 @@ export function BatchUpload({
   const [result, setResult] =
   useState<BatchUploadResponse | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [documentTypes, setDocumentTypes] = useState<DocumentType[]>([]);
+  const [documentTypeId, setDocumentTypeId] = useState("");
+
+  useEffect(() => {
+    if (isAdmin) void getDocumentTypes().then(setDocumentTypes).catch((loadError) => console.error("Failed to load document types:", loadError));
+  }, [isAdmin]);
   // const [batchId, setBatchId] = useState<number | null>(null);
 
   async function loadBatch(
@@ -67,6 +79,9 @@ if (batch.batch.status === "COMPLETED") {
           mimeType: document.mimeType,
           status: document.status,
           parseStatus: document.parseStatus,
+          activeWorkerId: document.activeWorkerId ?? null,
+          activeWorkerName: document.activeWorkerName ?? null,
+          claimExpiresAt: document.claimExpiresAt ?? null,
         },
         success: document.status !== "FAILED",
         status: document.status,
@@ -105,6 +120,38 @@ if (batch.batch.status === "COMPLETED") {
 
   initializeBatch();
 }, []);
+
+useEffect(() => {
+  if (!result) return;
+
+  const documentIds = result.results
+    .map((item) => item.document?.id)
+    .filter((id): id is number => typeof id === "number");
+  if (documentIds.length === 0) return;
+
+  const releases = documentIds.map((id) => realtimeClient.watchDocument(id));
+  const watchedIds = new Set(documentIds);
+  let refreshTimer = 0;
+  const refresh = () => {
+    if (refreshTimer) window.clearTimeout(refreshTimer);
+    refreshTimer = window.setTimeout(() => {
+      void loadBatch(result.batchId).then((freshResult) => {
+        if (freshResult) setResult(freshResult);
+      });
+    }, 150);
+  };
+  const unsubscribe = realtimeClient.onEvent((event) => {
+    if (event.type === "CONNECTED" || (event.documentId && watchedIds.has(event.documentId) && [
+      "DOCUMENT_UPDATED", "DOCUMENT_STATUS_CHANGED", "DOCUMENT_COMPLETED", "DOCUMENT_CLAIMED", "DOCUMENT_RELEASED",
+    ].includes(event.type))) refresh();
+  });
+
+  return () => {
+    unsubscribe();
+    releases.forEach((release) => release());
+    if (refreshTimer) window.clearTimeout(refreshTimer);
+  };
+}, [result?.batchId, result?.results.map((item) => item.document?.id).join(",")]);
 
 
 useEffect(() => {
@@ -221,7 +268,7 @@ useEffect(() => {
   setError("");
   setResult(null);
 
-  const result = await uploadBatch(files);
+  const result = await uploadBatch(files, documentTypeId ? Number(documentTypeId) : undefined);
 
   localStorage.setItem(
     ACTIVE_BATCH_KEY,
@@ -229,6 +276,9 @@ useEffect(() => {
   );
 
   setResult(result);
+  void loadBatch(result.batchId).then((freshResult) => {
+    if (freshResult) setResult(freshResult);
+  });
 
   onComplete(result);
 } catch (error) {
@@ -258,6 +308,16 @@ useEffect(() => {
         <>
           {/* Header */}
           <div>
+            {isAdmin && onBackToDashboard && (
+              <button
+                type="button"
+                onClick={onBackToDashboard}
+                disabled={uploading}
+                className="mb-4 text-sm font-medium text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                ← Back to Dashboard
+              </button>
+            )}
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-lg text-white">
                 ↑
@@ -265,15 +325,23 @@ useEffect(() => {
 
               <div>
                 <h2 className="text-2xl font-bold text-slate-900">
-                  Batch Upload
+                  {isAdmin ? "Publish Document Batch" : "Batch Upload"}
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Upload and process multiple documents at once.
+                  {isAdmin ? "Make multiple documents available for ordinary users to process." : "Upload and process multiple documents at once."}
                 </p>
               </div>
             </div>
           </div>
+
+          {isAdmin && <label className="block rounded-xl border border-slate-200 bg-white p-4 text-left">
+            <span className="text-sm font-medium text-slate-700">Document type (optional)</span>
+            <select value={documentTypeId} onChange={(event) => setDocumentTypeId(event.target.value)} disabled={uploading} className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm">
+              <option value="">Users can choose a type when processing</option>
+              {documentTypes.filter((type) => type.activeVersion).map((type) => <option key={type.id} value={type.id}>{type.name} · active v{type.activeVersion?.versionNumber}</option>)}
+            </select>
+          </label>}
 
           {/* Drop zone */}
           <div
@@ -412,11 +480,11 @@ useEffect(() => {
 
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-slate-800">
-                    Processing documents...
+                    {isAdmin ? "Publishing documents..." : "Processing documents..."}
                   </p>
 
                   <p className="mt-1 text-xs text-slate-500">
-                    Uploading and processing your batch. Please wait.
+                    {isAdmin ? "Adding this batch to Available Documents." : "Uploading and processing your batch. Please wait."}
                   </p>
                 </div>
               </div>
@@ -445,18 +513,20 @@ useEffect(() => {
               className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {uploading
-                ? "Processing..."
-                : `Upload ${files.length} ${
+                ? (isAdmin ? "Publishing..." : "Processing...")
+                : `${isAdmin ? "Make" : "Upload"} ${files.length} ${
                     files.length === 1 ? "document" : "documents"
-                  }`}
+                  } ${isAdmin ? "available to users" : ""}`}
             </button>
           </div>
         </>
       ) : (
         <BatchResults
           result={result}
-          onOpenDraft={onOpenDraft}
+          onOpenDocument={onOpenDocument}
           onNewBatch={handleNewBatch}
+          isAdmin={isAdmin}
+          onBackToDashboard={onBackToDashboard}
         />
       )}
     </div>
@@ -464,14 +534,18 @@ useEffect(() => {
 }
 
 interface BatchResultsProps {
+  isAdmin: boolean;
+  onBackToDashboard?: () => void;
   result: BatchUploadResponse;
-  onOpenDraft: (documentId: number) => void;
+  onOpenDocument: (documentId: number) => void;
   onNewBatch: () => void;
 }
 
 function BatchResults({
+  isAdmin,
+  onBackToDashboard,
   result,
-  onOpenDraft,
+  onOpenDocument,
   onNewBatch,
 }: BatchResultsProps) {
   return (
@@ -487,11 +561,11 @@ function BatchResults({
 
               <div>
                 <h2 className="text-xl font-bold text-slate-900">
-                  Batch ready
+                  {isAdmin ? "Batch published" : "Batch ready"}
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Your documents are ready to be processed.
+                  {isAdmin ? "These documents are now in Available Documents for ordinary users." : "Your documents are ready to be processed."}
                 </p>
               </div>
             </div>
@@ -505,6 +579,15 @@ function BatchResults({
             Upload another batch
           </button>
         </div>
+        {isAdmin && onBackToDashboard && (
+          <button
+            type="button"
+            onClick={onBackToDashboard}
+            className="mt-4 text-sm font-medium text-slate-600 hover:text-slate-900"
+          >
+            ← Back to Dashboard
+          </button>
+        )}
 
         {/* Summary */}
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -514,12 +597,8 @@ function BatchResults({
           />
 
           <SummaryCard
-            value={
-              result.results.filter(
-                (item) => item.status === "READY"
-              ).length
-            }
-            label="Ready"
+            value={result.results.filter((item) => item.status === "AVAILABLE").length}
+            label="Available"
           />
 
           <SummaryCard
@@ -542,11 +621,11 @@ function BatchResults({
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
           <h3 className="text-sm font-semibold text-slate-900">
-            Processing results
+            {isAdmin ? "Documents published" : "Processing results"}
           </h3>
 
           <p className="mt-1 text-xs text-slate-500">
-            Review the status and classification suggestions for each document.
+            {isAdmin ? "Published documents are ready for users to process." : "Review the status and classification suggestions for each document."}
           </p>
         </div>
 
@@ -558,6 +637,11 @@ function BatchResults({
                 item.document?.fileName ??
                 item.fileName ??
                 "Unknown document";
+              const currentlyWorking = Boolean(
+                item.document?.activeWorkerId != null &&
+                  item.document.claimExpiresAt &&
+                  new Date(item.document.claimExpiresAt).getTime() > Date.now(),
+              );
 
               return (
                 <div
@@ -565,7 +649,8 @@ function BatchResults({
                     item.document?.id ??
                     `${item.fileName}-${index}`
                   }
-                  className="px-5 py-4 transition hover:bg-slate-50"
+                  data-testid={item.document?.id ? `batch-document-${item.document.id}` : undefined}
+                  className={`px-5 py-4 transition ${currentlyWorking ? "bg-rose-50/60 hover:bg-rose-50" : "bg-emerald-50/60 hover:bg-emerald-50"}`}
                 >
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
                     {/* Document */}
@@ -581,6 +666,12 @@ function BatchResults({
                         >
                           {documentName}
                         </p>
+
+                        {currentlyWorking && (
+                          <p className="mt-1 text-xs font-semibold text-rose-700">
+                            Currently working: {item.document?.activeWorkerName || "User"}
+                          </p>
+                        )}
 
                         {item.success &&
                           item.suggestions &&
@@ -606,7 +697,9 @@ function BatchResults({
 
                     {/* Status */}
                     <div className="shrink-0">
-                      {item.status === "READY" ? (
+                      {item.status === "AVAILABLE" ? (
+                        <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700"><span className="h-1.5 w-1.5 rounded-full bg-blue-500" />Available</span>
+                      ) : item.status === "READY" ? (
                         <span className="inline-flex items-center gap-2 rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700">
                           <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
                           Ready
@@ -625,11 +718,11 @@ function BatchResults({
                     </div>
 
                     {/* Action */}
-                    {item.status === "READY" && item.document && (
+                    {!isAdmin && ["AVAILABLE", "READY"].includes(item.status) && item.document && (
                       <button
                         type="button"
                         onClick={() =>
-                          onOpenDraft(item.document!.id)
+                          onOpenDocument(item.document!.id)
                         }
                         className="shrink-0 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
                       >
@@ -637,11 +730,11 @@ function BatchResults({
                       </button>
                     )}
 
-                    {item.status === "DRAFT" && item.document && (
+                    {!isAdmin && item.status === "DRAFT" && item.document && (
                       <button
                         type="button"
                         onClick={() =>
-                          onOpenDraft(item.document!.id)
+                          onOpenDocument(item.document!.id)
                         }
                         className="shrink-0 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
                       >

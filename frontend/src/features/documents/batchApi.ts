@@ -5,6 +5,9 @@ export interface BatchDocumentResult {
     mimeType: string;
     status: string;
     parseStatus: string;
+    activeWorkerId?: number | null;
+    activeWorkerName?: string | null;
+    claimExpiresAt?: string | null;
   };
   fileName?: string;
   success: boolean;
@@ -37,6 +40,9 @@ export interface BatchDetails {
     documentTypeId?: number | null;
     createdAt: string;
     updatedAt: string;
+    activeWorkerId?: number | null;
+    activeWorkerName?: string | null;
+    claimExpiresAt?: string | null;
   }>;
 }
 
@@ -89,13 +95,15 @@ export interface BatchUploadResponse {
 }
 
 export async function uploadBatch(
-  files: File[]
+  files: File[],
+  documentTypeId?: number
 ): Promise<BatchUploadResponse> {
   const formData = new FormData();
 
   for (const file of files) {
     formData.append("files", file);
   }
+  if (documentTypeId) formData.append("documentTypeId", String(documentTypeId));
 
   const response = await fetch(
     "http://localhost:3000/api/documents/batch",

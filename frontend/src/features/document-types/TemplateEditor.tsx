@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import {
   createDocumentType,
+  publishDocumentTypeVersion,
   updateDocumentType,
   type DocumentType,
 } from "./api";
@@ -12,12 +13,14 @@ import { SchemaEditor } from "./SchemaEditor";
 
 interface TemplateEditorProps {
   documentType?: DocumentType;
+  canPublish?: boolean;
   onSaved: () => void;
   onCancel: () => void;
 }
 
 export function TemplateEditor({
   documentType,
+  canPublish = true,
   onSaved,
   onCancel,
 }: TemplateEditorProps) {
@@ -46,6 +49,13 @@ export function TemplateEditor({
   const [loading, setLoading] = useState(false);
 
   const [error, setError] = useState("");
+  const [pendingPublishVersion, setPendingPublishVersion] = useState(
+    documentType?.draftVersion ??
+      (documentType?.versionStatus === "DRAFT" && documentType.documentTypeVersionId && documentType.versionNumber
+        ? { id: documentType.documentTypeVersionId, versionNumber: documentType.versionNumber, status: "DRAFT" }
+        : null),
+  );
+  const [publishing, setPublishing] = useState(false);
 
   async function handleSubmit() {
     try {
@@ -81,12 +91,16 @@ if (hasDuplicateFieldNames) {
 }
 
       if (documentType) {
-        await updateDocumentType(documentType.id, {
+        const result = await updateDocumentType(documentType.id, {
           name: name.trim(),
           domain: domain.trim(),
           description: description.trim(),
           jsonSchema: schema,
         });
+        if (result.draftVersion) {
+          setPendingPublishVersion(result.draftVersion);
+          return;
+        }
       } else {
         await createDocumentType({
           name: name.trim(),
@@ -110,6 +124,36 @@ if (hasDuplicateFieldNames) {
     }
   }
 
+  async function handlePublish() {
+    if (!documentType || !pendingPublishVersion) return;
+    try {
+      setPublishing(true);
+      setError("");
+      await publishDocumentTypeVersion(documentType.id, pendingPublishVersion.id);
+      onSaved();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to publish template version.");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  async function handleActivateArchivedVersion(versionId: number) {
+    if (!documentType) return;
+    try {
+      setPublishing(true);
+      setError("");
+      await publishDocumentTypeVersion(documentType.id, versionId);
+      onSaved();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to activate template version.");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  const archivedVersions = documentType?.versions?.filter((version) => version.status === "ARCHIVED") ?? [];
+
   const fieldCount = Object.keys(
     schema.properties ?? {}
   ).length;
@@ -132,6 +176,12 @@ if (hasDuplicateFieldNames) {
           Define the document type and the fields that
           should be collected when generating JSON.
         </p>
+        {documentType?.activeVersion && (
+          <p className="mt-2 text-sm text-slate-600">
+            Active version: <strong>v{documentType.activeVersion.versionNumber}</strong>
+            {pendingPublishVersion && <> · Editing draft <strong>v{pendingPublishVersion.versionNumber}</strong></>}
+          </p>
+        )}
       </div>
 
       {/* Basic information */}
@@ -276,6 +326,42 @@ if (hasDuplicateFieldNames) {
       )}
 
       {/* Actions */}
+      {pendingPublishVersion && canPublish && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-medium text-amber-900">
+            Draft v{pendingPublishVersion.versionNumber} is saved. It will be used for new documents after you publish it.
+          </p>
+          <button type="button" onClick={handlePublish} disabled={publishing || loading} className="mt-3 rounded-lg bg-amber-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            {publishing ? "Publishing…" : `Publish v${pendingPublishVersion.versionNumber}`}
+          </button>
+        </div>
+      )}
+      {pendingPublishVersion && !canPublish && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          Draft v{pendingPublishVersion.versionNumber} is saved, but publishing is disabled for this account.
+        </p>
+      )}
+      {archivedVersions.length > 0 && (
+        <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <h3 className="text-sm font-semibold text-slate-900">Previously published versions</h3>
+          <p className="mt-1 text-sm text-slate-600">
+            Activate an earlier version to use it for new documents. Existing documents keep their saved version.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {archivedVersions.map((version) => (
+              <button
+                key={version.id}
+                type="button"
+                onClick={() => void handleActivateArchivedVersion(version.id)}
+                disabled={publishing || loading}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60"
+              >
+                {publishing ? "Activating…" : `Activate v${version.versionNumber}`}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:justify-end">
         <button
           type="button"
@@ -295,7 +381,7 @@ if (hasDuplicateFieldNames) {
           {loading
             ? "Saving..."
             : isEditing
-            ? "Save Template"
+            ? pendingPublishVersion ? "Save Draft Changes" : "Save Draft"
             : "Create Template"}
         </button>
       </div>

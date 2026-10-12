@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "tsx realtime-server.ts",
     "build": "next build",
-    "start": "next start",
+    "start": "tsx realtime-server.ts",
     "lint": "eslint",
     "test": "vitest",
     "test:run": "vitest run",
@@ -30,7 +30,8 @@
     "react-dom": "19.2.8",
     "sanitize-html": "^2.17.7",
     "tesseract.js": "^7.0.0",
-    "unpdf": "^1.8.1"
+    "unpdf": "^1.8.1",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "@prisma/cli-engine": "0.2.3",
@@ -39,6 +40,8 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/sanitize-html": "^2.16.1",
+    "@vitest/coverage-v8": "5.0.2",
+    "@vitest/ui": "5.0.3",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",

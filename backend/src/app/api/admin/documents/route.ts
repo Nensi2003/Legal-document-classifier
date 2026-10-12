@@ -29,8 +29,8 @@ export async function GET() {
     const documentTypes =
       await db.orm.public.DocumentType.all();
 
-    const documentsWithDetails = documents.map(
-      (document) => {
+    const documentsWithDetails = await Promise.all(documents.map(
+      async (document) => {
         const documentUser = users.find(
           (user) => user.id === document.userId
         );
@@ -52,9 +52,14 @@ export async function GET() {
           userEmail: documentUser?.email ?? null,
           documentTypeName:
             documentType?.name ?? null,
+          documentTypeVersionId: document.documentTypeVersionId,
+          documentTypeVersionNumber: document.documentTypeVersionId
+            ? (await db.orm.public.DocumentTypeVersion.where({ id: document.documentTypeVersionId }).first())?.versionNumber ?? null
+            : null,
+          uploaderRole: documentUser?.role ?? null,
         };
       }
-    );
+    ));
 
     return NextResponse.json({
       documents: documentsWithDetails,

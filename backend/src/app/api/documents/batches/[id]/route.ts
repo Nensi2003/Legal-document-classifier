@@ -60,22 +60,34 @@ export async function GET(
         updatedAt: batch.updatedAt,
       },
 
-      documents: documents
+      documents: await Promise.all(documents
         .sort(
           (a, b) =>
             new Date(b.createdAt).getTime() -
             new Date(a.createdAt).getTime()
         )
-        .map((document) => ({
-          id: document.id,
-          fileName: document.fileName,
-          mimeType: document.mimeType,
-          status: document.status,
-          parseStatus: document.parseStatus,
-          parseMessage: document.parseMessage,
-          documentTypeId: document.documentTypeId,
-          createdAt: document.createdAt,
-          updatedAt: document.updatedAt,
+        .map(async (document) => {
+          const isClaimed = document.activeWorkerId != null
+            && document.claimExpiresAt != null
+            && new Date(document.claimExpiresAt).getTime() > Date.now();
+          const activeWorker = isClaimed
+            ? await db.orm.public.User.where({ id: document.activeWorkerId! }).first()
+            : null;
+
+          return {
+            id: document.id,
+            fileName: document.fileName,
+            mimeType: document.mimeType,
+            status: document.status,
+            parseStatus: document.parseStatus,
+            parseMessage: document.parseMessage,
+            documentTypeId: document.documentTypeId,
+            activeWorkerId: isClaimed ? document.activeWorkerId : null,
+            activeWorkerName: activeWorker?.name ?? null,
+            claimExpiresAt: isClaimed ? document.claimExpiresAt : null,
+            createdAt: document.createdAt,
+            updatedAt: document.updatedAt,
+          };
         })),
     });
   } catch (error) {

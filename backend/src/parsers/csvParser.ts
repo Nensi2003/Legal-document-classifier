@@ -3,9 +3,9 @@ import { parse } from "csv-parse/sync";
 import type { ParsedDocument } from "./types";
 
 export async function parseCsv(
-  filePath: string
+  filePath: string | Buffer
 ): Promise<ParsedDocument> {
-  const file = await readFile(filePath, "utf-8");
+  const file = typeof filePath === "string" ? await readFile(filePath, "utf-8") : filePath.toString("utf-8");
 
   const records = parse(file, {
     columns: true,

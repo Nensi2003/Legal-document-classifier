@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth";
-import { db } from "@/prisma/db";
-import { deleteDocument } from "@/services/documentService";
+import { deleteDocument, SharePointManagedDocumentError } from "@/services/documentService";
+import { getAccessibleDocumentById } from "@/services/documentAccessService";
+import { publishDocumentEvent } from "@/realtime/publisher";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -34,12 +35,7 @@ export async function GET(
     }
 
     // 3. Find document belonging to current user
-    const document = await db.orm.public.Document
-      .where({
-        id: documentId,
-        userId: user.id,
-      })
-      .first();
+    const document = await getAccessibleDocumentById(documentId, user.id);
 
     // 4. Document doesn't exist or doesn't belong to user
     if (!document) {
@@ -52,9 +48,16 @@ export async function GET(
     }
 
     // 5. Return document
-    return NextResponse.json({
-      document,
-    });
+    const activeWorker = document.activeWorkerId == null || !document.claimExpiresAt || new Date(document.claimExpiresAt).getTime() <= Date.now()
+      ? null : await (await import("@/prisma/db")).db.orm.public.User.where({ id: document.activeWorkerId }).first();
+    const isClaimed = activeWorker !== null;
+    return NextResponse.json({ document: {
+      ...document,
+      activeWorkerId: isClaimed ? document.activeWorkerId : null,
+      claimExpiresAt: isClaimed ? document.claimExpiresAt : null,
+      activeWorkerName: activeWorker?.name ?? null,
+      isClaimedByCurrentUser: isClaimed && document.activeWorkerId === user.id,
+    } });
   } catch (error) {
     console.error("Get document error:", error);
 
@@ -103,6 +106,8 @@ export async function DELETE(
       );
     }
 
+    publishDocumentEvent("DOCUMENT_DELETED", documentId, user.id, { fileName: document.fileName });
+
     return NextResponse.json({
       message: "Document deleted successfully",
       document: {
@@ -111,6 +116,9 @@ export async function DELETE(
       },
     });
   } catch (error) {
+    if (error instanceof SharePointManagedDocumentError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error("Delete document error:", error);
 
     return NextResponse.json(

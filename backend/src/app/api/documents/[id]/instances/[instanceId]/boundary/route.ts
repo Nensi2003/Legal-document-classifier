@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth";
 import { updateDocumentInstanceBoundary } from "@/services/documentInstanceService";
 import { NextRequest, NextResponse } from "next/server";
+import { publishDocumentEvent } from "@/realtime/publisher";
 
 export const runtime = "nodejs";
 
@@ -76,6 +77,7 @@ export async function PATCH(
       startPage,
       endPage
     );
+    publishDocumentEvent("DOCUMENT_UPDATED", documentId, user.id, { instanceId: instanceIdNumber, boundaryChanged: true });
 
     // 6. Return the updated instance.
     return NextResponse.json({

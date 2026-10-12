@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   getDocumentById,
@@ -35,15 +35,44 @@ import { DynamicField } from "./DynamicField";
 
 interface DocumentFormProps {
   documentId: number;
+  userId: number;
+  activeWorkerId?: number | null;
+  activeWorkerName?: string | null;
+  backLabel?: string;
+  compact?: boolean;
   onBack: () => void;
 }
 
 export function DocumentForm({
   documentId,
+  userId,
+  activeWorkerId,
+  activeWorkerName,
+  backLabel = "← Back to Documents",
+  compact = false,
   onBack,
 }: DocumentFormProps) {
   const [currentDocument, setCurrentDocument] =
     useState<Document | null>(null);
+  const currentWorkerId = activeWorkerId ?? currentDocument?.activeWorkerId;
+  const isCompleted = currentDocument?.status === "COMPLETED";
+  const isReadOnly = isCompleted || (currentWorkerId != null && currentWorkerId !== userId);
+  const currentWorkerName = activeWorkerName ?? currentDocument?.activeWorkerName;
+  const expectedUpdatedAt = useRef("");
+
+  async function persistDocumentDraft(data: Record<string, unknown>) {
+    const saved = await saveDraft(documentId, data, expectedUpdatedAt.current);
+    expectedUpdatedAt.current = saved.updatedAt;
+    setCurrentDocument((current) => current ? { ...current, updatedAt: saved.updatedAt } : current);
+    return saved;
+  }
+
+  async function persistInstanceDraft(instanceId: number, data: Record<string, unknown>) {
+    const saved = await saveInstanceDraft(documentId, instanceId, data, expectedUpdatedAt.current);
+    expectedUpdatedAt.current = saved.documentUpdatedAt;
+    setCurrentDocument((current) => current ? { ...current, updatedAt: saved.documentUpdatedAt } : current);
+    return saved;
+  }
 
   const [instances, setInstances] =
     useState<DocumentInstance[]>([]);
@@ -107,6 +136,7 @@ export function DocumentForm({
           await getDocumentById(documentId);
 
         setCurrentDocument(documentData);
+        expectedUpdatedAt.current = documentData.updatedAt ?? "";
 
         if (!documentData.documentTypeId) {
           setError(
@@ -117,7 +147,8 @@ export function DocumentForm({
 
         const documentTypeData =
           await getDocumentTypeById(
-            documentData.documentTypeId
+            documentData.documentTypeId,
+            documentData.documentTypeVersionId,
           );
 
         setDocumentType(documentTypeData);
@@ -233,11 +264,7 @@ export function DocumentForm({
 
           if (instanceId !== null) {
             const savedInstance =
-              await saveInstanceDraft(
-                documentId,
-                instanceId,
-                formData
-              );
+              await persistInstanceDraft(instanceId, formData);
 
             // Keep the local instance snapshot synchronized
             // without changing the instance ID.
@@ -255,10 +282,7 @@ export function DocumentForm({
               )
             );
           } else {
-            await saveDraft(
-              documentId,
-              formData
-            );
+            await persistDocumentDraft(formData);
           }
 
           setDraftDirty(false);
@@ -267,6 +291,10 @@ export function DocumentForm({
             "Failed to save draft:",
             error
           );
+          if (error instanceof Error && error.message.includes("changed in another session")) {
+            setError(error.message);
+            setDraftDirty(false);
+          }
         } finally {
           setSavingDraft(false);
         }
@@ -310,11 +338,7 @@ export function DocumentForm({
         setSavingDraft(true);
 
         const savedInstance =
-          await saveInstanceDraft(
-            documentId,
-            currentInstance.id,
-            formData
-          );
+          await persistInstanceDraft(currentInstance.id, formData);
 
         setInstances((currentInstances) =>
           currentInstances.map((instance) =>
@@ -378,11 +402,7 @@ export function DocumentForm({
       if (draftDirty) {
         setSavingDraft(true);
 
-        const savedInstance = await saveInstanceDraft(
-          documentId,
-          currentInstance.id,
-          formData
-        );
+        const savedInstance = await persistInstanceDraft(currentInstance.id, formData);
 
         setInstances((currentInstances) =>
           currentInstances.map((instance) =>
@@ -462,10 +482,7 @@ export function DocumentForm({
     if (draftDirty) {
       setSavingDraft(true);
 
-      await saveDraft(
-        documentId,
-        formData
-      );
+      await persistDocumentDraft(formData);
 
       setDraftDirty(false);
       setSavingDraft(false);
@@ -516,10 +533,7 @@ export function DocumentForm({
         if (draftDirty) {
           setSavingDraft(true);
 
-          await saveDraft(
-            documentId,
-            formData
-          );
+          await persistDocumentDraft(formData);
 
           setDraftDirty(false);
           setSavingDraft(false);
@@ -549,11 +563,7 @@ export function DocumentForm({
         setSavingDraft(true);
 
         const savedInstance =
-          await saveInstanceDraft(
-            documentId,
-            currentInstance.id,
-            formData
-          );
+          await persistInstanceDraft(currentInstance.id, formData);
 
         setInstances((currentInstances) =>
           currentInstances.map((instance) =>
@@ -755,7 +765,7 @@ if (groupedErrors.length === 0) {
           onClick={onBack}
           className="mb-5 text-sm font-medium text-slate-500 transition hover:text-slate-900"
         >
-          ← Back to Documents
+          {backLabel}
         </button>
 
         <p
@@ -781,7 +791,7 @@ if (groupedErrors.length === 0) {
           onClick={onBack}
           className="mb-5 text-sm font-medium text-slate-500 transition hover:text-slate-900"
         >
-          ← Back to Documents
+          {backLabel}
         </button>
 
         <p className="text-sm text-slate-500">
@@ -799,6 +809,19 @@ if (groupedErrors.length === 0) {
   const schema =
     documentType.jsonSchema as JSONSchema;
 
+  if (!schema || typeof schema !== "object" || !schema.properties || typeof schema.properties !== "object") {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-6">
+        <button type="button" onClick={onBack} className="mb-5 text-sm font-medium text-slate-500 hover:text-slate-900">
+          {backLabel}
+        </button>
+        <p role="alert" className="text-sm font-medium text-red-700">
+          The template schema for this document version is unavailable.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
 
@@ -812,7 +835,7 @@ if (groupedErrors.length === 0) {
           onClick={onBack}
           className="mb-5 text-sm font-medium text-slate-500 transition hover:text-slate-900"
         >
-          ← Back to Documents
+          {backLabel}
         </button>
 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -940,7 +963,7 @@ if (groupedErrors.length === 0) {
           MAIN WORKSPACE
           ===================================================== */}
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <div className={`grid items-start gap-6 ${compact ? "grid-cols-1" : "xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]"}`}>
 
         {/* =================================================
             LEFT: DOCUMENT / EXTRACTED TEXT
@@ -1094,12 +1117,13 @@ if (groupedErrors.length === 0) {
               Complete the structured fields below.
               Your progress is saved automatically.
             </p>
+            {isReadOnly && <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{isCompleted ? "This document is complete and read-only." : `Currently working: ${currentWorkerName || "Another user"}. You can view this document, but editing is disabled.`}</p>}
 
           </div>
 
 
           {/* Fields */}
-          <div className="p-6">
+          <fieldset disabled={isReadOnly} className="p-6 disabled:cursor-not-allowed disabled:opacity-70">
 
             <div className="space-y-5">
 
@@ -1129,7 +1153,7 @@ if (groupedErrors.length === 0) {
 
             </div>
 
-          </div>
+          </fieldset>
 
         </section>
 
@@ -1221,7 +1245,7 @@ if (groupedErrors.length === 0) {
             <button
               type="button"
               onClick={handleGenerateInstanceJSON}
-              disabled={generatingJSON || savingDraft}
+              disabled={isReadOnly || generatingJSON || savingDraft}
               className="shrink-0 rounded-lg bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {generatingJSON
@@ -1237,7 +1261,7 @@ if (groupedErrors.length === 0) {
                 ? handleGenerateCombinedJSON
                 : handleGenerateSingleDocumentJSON
             }
-            disabled={generatingJSON || savingDraft}
+            disabled={isReadOnly || generatingJSON || savingDraft}
             className="shrink-0 rounded-lg border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
           >
             {generatingJSON

@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
+import { getAccessibleDocumentById } from "@/services/documentAccessService";
 import { db } from "@/prisma/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -28,12 +29,7 @@ export async function GET(
       );
     }
 
-    const document = await db.orm.public.Document
-      .where({
-        id: documentId,
-        userId: user.id,
-      })
-      .first();
+    const document = await getAccessibleDocumentById(documentId, user.id);
 
     if (!document) {
       return NextResponse.json(
@@ -61,6 +57,7 @@ export async function GET(
         status: instance.status,
         draftData: instance.draftData,
         generatedJSON: instance.generatedJSON,
+        updatedAt: instance.updatedAt,
       })),
     });
   } catch (error) {

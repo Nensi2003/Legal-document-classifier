@@ -5,6 +5,7 @@ import {
   getDocuments,
   type Document,
 } from "./api";
+import { realtimeClient } from "../realtime/realtimeClient";
 
 import {
   getDocumentTypes,
@@ -16,6 +17,13 @@ interface DocumentListProps {
 }
 
 const DOCUMENTS_PER_PAGE = 10;
+const SHAREPOINT_UPLOAD_URL = import.meta.env.VITE_SHAREPOINT_UPLOAD_URL?.trim();
+
+function localDateKey(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
 
 export function DocumentList({
   onOpenDocument,
@@ -30,6 +38,9 @@ export function DocumentList({
   const [selectedDocumentType, setSelectedDocumentType] =
     useState("");
   const [selectedStatus, setSelectedStatus] = useState("");
+  const [selectedUploader, setSelectedUploader] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -109,6 +120,43 @@ export function DocumentList({
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    const releases = documents.map((document) => realtimeClient.watchDocument(document.id));
+    return () => releases.forEach((release) => release());
+  }, [documents]);
+
+  useEffect(() => {
+    let refreshTimer = 0;
+    const refreshFromServer = () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        void Promise.all([getDocuments(), getDocumentTypes()]).then(([nextDocuments, nextTypes]) => {
+          setDocuments(nextDocuments);
+          setDocumentTypes(nextTypes);
+        }).catch((loadError) => console.error("Failed to refresh documents after a live update:", loadError));
+      }, 150);
+    };
+    const unsubscribe = realtimeClient.onEvent((event) => {
+      if (["CONNECTED", "DOCUMENT_AVAILABLE", "DOCUMENT_UPDATED", "DOCUMENT_STATUS_CHANGED", "DOCUMENT_COMPLETED", "DOCUMENT_DELETED", "DOCUMENT_CLAIMED", "DOCUMENT_RELEASED"].includes(event.type)) refreshFromServer();
+    });
+    return () => {
+      unsubscribe();
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+    };
+  }, []);
+
+  // The backend imports newly uploaded SharePoint files when the list API is
+  // queried. Poll only when the SharePoint upload folder has been configured.
+  useEffect(() => {
+    if (!SHAREPOINT_UPLOAD_URL) return;
+    const interval = window.setInterval(() => {
+      void getDocuments().then(setDocuments).catch((loadError) => {
+        console.error("Failed to sync SharePoint uploads:", loadError);
+      });
+    }, 30_000);
+    return () => window.clearInterval(interval);
   }, []);
 
   /*
@@ -194,19 +242,26 @@ export function DocumentList({
         ) {
           return false;
         }
+        if (selectedUploader && String(document.uploaderId ?? "") !== selectedUploader) return false;
+
+        const uploadDate = localDateKey(document.createdAt);
+        if ((fromDate && uploadDate < fromDate) || (toDate && uploadDate > toDate)) return false;
 
         return true;
       })
       .sort(
         (a, b) =>
           new Date(b.createdAt).getTime() -
-          new Date(a.createdAt).getTime()
+          new Date(a.createdAt).getTime() || b.id - a.id
       );
   }, [
     documents,
     searchQuery,
     selectedDocumentType,
     selectedStatus,
+    selectedUploader,
+    fromDate,
+    toDate,
   ]);
 
   /*
@@ -254,7 +309,10 @@ export function DocumentList({
   const hasFilters =
     searchQuery.trim() !== "" ||
     selectedDocumentType !== "" ||
-    selectedStatus !== "";
+    selectedStatus !== "" ||
+    selectedUploader !== "" ||
+    fromDate !== "" ||
+    toDate !== "";
 
   const firstDisplayedDocument =
     filteredDocuments.length === 0
@@ -277,6 +335,9 @@ export function DocumentList({
     setSearchQuery("");
     setSelectedDocumentType("");
     setSelectedStatus("");
+    setSelectedUploader("");
+    setFromDate("");
+    setToDate("");
     setCurrentPage(1);
   }
 
@@ -308,7 +369,7 @@ export function DocumentList({
     return (
       <div className="rounded-xl border border-red-200 bg-red-50 p-6">
         <h2 className="font-semibold text-red-900">
-          My Documents
+            Documents
         </h2>
 
         <p
@@ -341,21 +402,25 @@ export function DocumentList({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-            My Documents
+            Documents
           </h1>
 
           <p className="mt-2 text-sm text-slate-500">
-            View, edit and manage your uploaded documents.
+            Browse documents uploaded by your team. Drafts stay available for anyone to continue.
           </p>
+          {SHAREPOINT_UPLOAD_URL && <p className="mt-1 text-xs text-slate-500">SharePoint uploads sync here within about 30 seconds. Supported files are limited to 10 MB and the same formats as app uploads.</p>}
         </div>
 
-        <div className="rounded-lg bg-slate-100 px-3 py-2">
-          <span className="text-sm font-medium text-slate-600">
+        <div className="flex flex-wrap items-center gap-3">
+          {SHAREPOINT_UPLOAD_URL && <a href={SHAREPOINT_UPLOAD_URL} target="_blank" rel="noreferrer" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Upload directly to SharePoint ↗</a>}
+          <div className="rounded-lg bg-slate-100 px-3 py-2">
+            <span className="text-sm font-medium text-slate-600">
             {documents.length}{" "}
             {documents.length === 1
               ? "document"
               : "documents"}
-          </span>
+            </span>
+          </div>
         </div>
       </div>
 
@@ -363,7 +428,7 @@ export function DocumentList({
       {documents.length > 0 && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
 
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_180px_auto]">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
 
             {/* Search */}
             <div className="relative">
@@ -410,8 +475,14 @@ export function DocumentList({
               ))}
             </select>
 
+            <select aria-label="Filter documents by uploader" value={selectedUploader} onChange={(event) => { setSelectedUploader(event.target.value); setCurrentPage(1); }} className="rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-700 outline-none transition hover:border-slate-300 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200">
+              <option value="">All uploaders</option>
+              {[...new Map(documents.filter((document) => document.uploaderId != null).map((document) => [document.uploaderId, document.uploaderRole === "ADMIN" ? "Admin" : document.uploaderName || "Unknown uploader"])).entries()].map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
+            </select>
+
             {/* Status filter */}
 <select
+  aria-label="Filter documents by status"
   value={selectedStatus}
   onChange={(event) => {
     setSelectedStatus(event.target.value);
@@ -425,6 +496,10 @@ export function DocumentList({
 
   <option value="PENDING">
     Pending
+  </option>
+
+  <option value="AVAILABLE">
+    Available
   </option>
 
   <option value="DRAFT">
@@ -442,7 +517,20 @@ export function DocumentList({
   <option value="COMPLETED">
     Completed
   </option>
+
+  <option value="FAILED">
+    Failed
+  </option>
 </select>
+
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
+              Uploaded from
+              <input aria-label="Filter documents uploaded from date" type="date" value={fromDate} max={toDate || undefined} onChange={(event) => { setFromDate(event.target.value); setCurrentPage(1); }} className="rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200" />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
+              Uploaded through
+              <input aria-label="Filter documents uploaded through date" type="date" value={toDate} min={fromDate || undefined} onChange={(event) => { setToDate(event.target.value); setCurrentPage(1); }} className="rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200" />
+            </label>
 
             {/* Clear filters */}
             {hasFilters && (
@@ -483,11 +571,7 @@ export function DocumentList({
               )}
             </p>
 
-            {hasFilters && (
-              <p className="text-xs text-slate-400">
-                Filters applied
-              </p>
-            )}
+            {hasFilters && <div className="flex flex-wrap gap-1.5 text-xs">{selectedStatus && <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">Status: {selectedStatus}</span>}{selectedDocumentType && <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">Type: {documentTypes.find((type) => String(type.id) === selectedDocumentType)?.name}</span>}{selectedUploader && <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">Uploaded by: {documents.find((document) => String(document.uploaderId) === selectedUploader)?.uploaderRole === "ADMIN" ? "Admin" : documents.find((document) => String(document.uploaderId) === selectedUploader)?.uploaderName}</span>}</div>}
           </div>
         </div>
       )}
@@ -546,10 +630,11 @@ export function DocumentList({
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
           {/* Desktop header */}
-          <div className="hidden border-b border-slate-200 bg-slate-50 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-400 md:grid md:grid-cols-[minmax(0,2fr)_1fr_1fr_1fr_auto] md:items-center md:gap-4">
+          <div className="hidden border-b border-slate-200 bg-slate-50 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-400 md:grid md:grid-cols-[minmax(0,2fr)_1fr_1fr_1fr_1fr_auto] md:items-center md:gap-4">
 
             <span>Document</span>
             <span>Type</span>
+            <span>Uploaded By</span>
             <span>Status</span>
             <span>Uploaded</span>
             <span>Actions</span>
@@ -652,11 +737,22 @@ function DocumentCard({
   onOpen,
   onDelete,
 }: DocumentCardProps) {
+  const sharePointStored = document.filePath.startsWith("sharepoint:v1:");
+  const currentlyWorking = Boolean(
+    document.activeWorkerId != null &&
+      document.claimExpiresAt &&
+      new Date(document.claimExpiresAt).getTime() > Date.now(),
+  );
+  const rowColor = document.status === "COMPLETED"
+    ? "bg-white hover:bg-slate-50"
+    : currentlyWorking
+      ? "bg-rose-50/60 hover:bg-rose-50"
+      : "bg-emerald-50/60 hover:bg-emerald-50";
   return (
-    <article className="px-5 py-5 transition hover:bg-slate-50 sm:px-6">
+    <article className={`px-5 py-5 transition sm:px-6 ${rowColor}`}>
 
       {/* Desktop */}
-      <div className="hidden md:grid md:grid-cols-[minmax(0,2fr)_1fr_1fr_1fr_auto] md:items-center md:gap-4">
+      <div className="hidden md:grid md:grid-cols-[minmax(0,2fr)_1fr_1fr_1fr_1fr_auto] md:items-center md:gap-4">
 
         {/* File */}
         <div className="flex min-w-0 items-center gap-3">
@@ -674,6 +770,8 @@ function DocumentCard({
             <p className="mt-0.5 text-xs text-slate-400">
               Document #{document.id}
             </p>
+            {sharePointStored && <p className="mt-1 text-xs text-slate-500">Stored in SharePoint</p>}
+            {currentlyWorking && <p className="mt-1 text-xs font-semibold text-rose-700">Currently working: {document.activeWorkerName || "User"}</p>}
 
           </div>
         </div>
@@ -686,6 +784,11 @@ function DocumentCard({
                 "Not classified"
               : "Not selected"}
           </p>
+        </div>
+
+        {/* Status */}
+        <div>
+          <p className="text-sm text-slate-600">{document.uploaderRole === "ADMIN" ? "Admin" : document.uploaderName || "Unknown"}</p>
         </div>
 
         {/* Status */}
@@ -713,13 +816,16 @@ function DocumentCard({
             Open
           </button>
 
-          <button
-            type="button"
-            onClick={onDelete}
-            className="rounded-lg border border-slate-200 px-3.5 py-2 text-xs font-medium text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-          >
-            Delete
-          </button>
+          {document.isUploadedByCurrentUser && document.uploaderRole !== "ADMIN" && !sharePointStored && (
+            <button
+              type="button"
+              onClick={onDelete}
+              aria-label={`Delete ${document.fileName}`}
+              className="rounded-lg border border-slate-200 px-3.5 py-2 text-xs font-medium text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+            >
+              Delete
+            </button>
+          )}
 
         </div>
       </div>
@@ -742,6 +848,9 @@ function DocumentCard({
             <p className="mt-1 text-xs text-slate-400">
               Document #{document.id}
             </p>
+            {sharePointStored && <p className="mt-1 text-xs text-slate-500">Stored in SharePoint</p>}
+            <p className="mt-1 text-xs font-medium text-slate-500">Uploaded by: {document.uploaderRole === "ADMIN" ? "Admin" : document.uploaderName || "Unknown"}</p>
+            {currentlyWorking && <p className="mt-1 text-xs font-semibold text-rose-700">Currently working: {document.activeWorkerName || "User"}</p>}
 
           </div>
 
@@ -795,13 +904,16 @@ function DocumentCard({
             Open
           </button>
 
-          <button
-            type="button"
-            onClick={onDelete}
-            className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-          >
-            Delete
-          </button>
+          {document.isUploadedByCurrentUser && document.uploaderRole !== "ADMIN" && !sharePointStored && (
+            <button
+              type="button"
+              onClick={onDelete}
+              aria-label={`Delete ${document.fileName}`}
+              className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+            >
+              Delete
+            </button>
+          )}
 
         </div>
 
@@ -840,6 +952,8 @@ function getStatusConfig(
   className: string;
 } {
   switch (status) {
+    case "AVAILABLE":
+      return { label: "Available", className: "bg-blue-50 text-blue-700" };
     case "PENDING":
       return {
         label: "Pending",

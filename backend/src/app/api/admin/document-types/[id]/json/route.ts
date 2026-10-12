@@ -37,10 +37,12 @@ export async function GET(
       );
     }
 
-    const result =
-      await getCombinedDocumentTypeJSON(
-        documentTypeId
-      );
+    const versionParam = new URL(_request.url).searchParams.get("version");
+    const versionNumber = versionParam === null ? undefined : Number(versionParam);
+    if (versionParam !== null && (!Number.isInteger(versionNumber) || versionNumber! < 1)) {
+      return NextResponse.json({ error: "Invalid version number" }, { status: 400 });
+    }
+    const result = await getCombinedDocumentTypeJSON(documentTypeId, versionNumber);
 
     return NextResponse.json(result);
   } catch (error) {

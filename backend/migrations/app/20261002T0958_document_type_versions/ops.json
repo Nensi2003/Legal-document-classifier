@@ -1,0 +1,603 @@
+[
+  {
+    "id": "table.documentTypeVersion",
+    "label": "Create table \"documentTypeVersion\"",
+    "summary": "Creates table \"documentTypeVersion\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "documentTypeVersion"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"documentTypeVersion\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"documentTypeVersion\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"documentTypeVersion\"",
+        "sql": "CREATE TABLE \"public\".\"documentTypeVersion\" (\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"documentTypeId\" int4 NOT NULL,\n  \"id\" SERIAL NOT NULL,\n  \"jsonSchema\" json NOT NULL,\n  \"publishedAt\" timestamptz,\n  \"status\" text DEFAULT 'DRAFT' NOT NULL,\n  \"updatedAt\" timestamptz NOT NULL,\n  \"versionNumber\" int4 NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"documentTypeVersion\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"documentTypeVersion\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "column.public.document.documentTypeVersionId",
+    "label": "Add column \"documentTypeVersionId\" to \"document\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "documentTypeVersionId",
+        "table": "document"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"documentTypeVersionId\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "document",
+          "documentTypeVersionId"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"documentTypeVersionId\"",
+        "sql": "ALTER TABLE \"public\".\"document\" ADD COLUMN \"documentTypeVersionId\" int4"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"documentTypeVersionId\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "document",
+          "documentTypeVersionId"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "column.public.field.documentTypeVersionId",
+    "label": "Add column \"documentTypeVersionId\" to \"field\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "documentTypeVersionId",
+        "table": "field"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"documentTypeVersionId\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "field",
+          "documentTypeVersionId"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"documentTypeVersionId\"",
+        "sql": "ALTER TABLE \"public\".\"field\" ADD COLUMN \"documentTypeVersionId\" int4"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"documentTypeVersionId\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "field",
+          "documentTypeVersionId"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "data.document-type-version-v1-backfill",
+    "label": "Backfill existing document type versions",
+    "summary": "Copies existing schemas, fields, and document version links into version 1.",
+    "operationClass": "data",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "documentTypeVersion"
+      }
+    },
+    "precheck": [],
+    "execute": [
+      {
+        "description": "copy legacy document types, fields, and documents to version 1",
+        "sql": "INSERT INTO \"public\".\"documentTypeVersion\" (\"documentTypeId\", \"versionNumber\", \"jsonSchema\", \"status\", \"publishedAt\", \"updatedAt\")\nSELECT dt.\"id\", 1, dt.\"jsonSchema\", 'ACTIVE', now(), now()\nFROM \"public\".\"documentType\" dt\nWHERE NOT EXISTS (SELECT 1 FROM \"public\".\"documentTypeVersion\" v WHERE v.\"documentTypeId\" = dt.\"id\" AND v.\"versionNumber\" = 1);\nUPDATE \"public\".\"document\" d SET \"documentTypeVersionId\" = v.\"id\"\nFROM \"public\".\"documentTypeVersion\" v\nWHERE d.\"documentTypeId\" = v.\"documentTypeId\" AND v.\"versionNumber\" = 1 AND d.\"documentTypeVersionId\" IS NULL;\nUPDATE \"public\".\"field\" f SET \"documentTypeVersionId\" = v.\"id\"\nFROM \"public\".\"documentTypeVersion\" v\nWHERE f.\"documentTypeId\" = v.\"documentTypeId\" AND v.\"versionNumber\" = 1 AND f.\"documentTypeVersionId\" IS NULL;\nCREATE UNIQUE INDEX \"documentTypeVersion_type_version_key\" ON \"public\".\"documentTypeVersion\" (\"documentTypeId\", \"versionNumber\");\nCREATE UNIQUE INDEX \"documentTypeVersion_one_active_per_type_key\" ON \"public\".\"documentTypeVersion\" (\"documentTypeId\") WHERE \"status\" = 'ACTIVE';"
+      }
+    ],
+    "postcheck": []
+  },
+  {
+    "id": "alterNullability.setNotNull.field.documentTypeVersionId",
+    "label": "Set NOT NULL on \"field\".\"documentTypeVersionId\"",
+    "operationClass": "destructive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "documentTypeVersionId",
+        "table": "field"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"documentTypeVersionId\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "field",
+          "documentTypeVersionId"
+        ]
+      },
+      {
+        "description": "ensure no NULL values in \"documentTypeVersionId\"",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"public\".\"field\" WHERE \"documentTypeVersionId\" IS NULL) AS \"result\"",
+        "params": []
+      }
+    ],
+    "execute": [
+      {
+        "description": "set NOT NULL on \"documentTypeVersionId\"",
+        "sql": "ALTER TABLE \"public\".\"field\" ALTER COLUMN \"documentTypeVersionId\" SET NOT NULL"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"documentTypeVersionId\" is NOT NULL",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3 AND \"is_nullable\" = $4)) AS \"result\"",
+        "params": [
+          "public",
+          "field",
+          "documentTypeVersionId",
+          "NO"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "dropConstraint.field.field_documentTypeId_fkey",
+    "label": "Drop constraint \"field_documentTypeId_fkey\" on \"field\"",
+    "operationClass": "destructive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "field_documentTypeId_fkey",
+        "table": "field"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"field_documentTypeId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "field_documentTypeId_fkey",
+          "public",
+          "\"public\".\"field\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "drop constraint \"field_documentTypeId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"field\" DROP CONSTRAINT \"field_documentTypeId_fkey\""
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"field_documentTypeId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "field_documentTypeId_fkey",
+          "public",
+          "\"public\".\"field\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "dropIndex.field.field_documentTypeId_idx_878907da",
+    "label": "Drop index \"field_documentTypeId_idx_878907da\"",
+    "operationClass": "destructive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "field_documentTypeId_idx_878907da",
+        "table": "field"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"field_documentTypeId_idx_878907da\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"field_documentTypeId_idx_878907da\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "drop index \"field_documentTypeId_idx_878907da\"",
+        "sql": "DROP INDEX \"public\".\"field_documentTypeId_idx_878907da\"",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"field_documentTypeId_idx_878907da\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"field_documentTypeId_idx_878907da\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "dropColumn.field.documentTypeId",
+    "label": "Drop column \"documentTypeId\" from \"field\"",
+    "operationClass": "destructive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "documentTypeId",
+        "table": "field"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"documentTypeId\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "field",
+          "documentTypeId"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "drop column \"documentTypeId\"",
+        "sql": "ALTER TABLE \"public\".\"field\" DROP COLUMN \"documentTypeId\""
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"documentTypeId\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "field",
+          "documentTypeId"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "dropColumn.documentType.jsonSchema",
+    "label": "Drop column \"jsonSchema\" from \"documentType\"",
+    "operationClass": "destructive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "jsonSchema",
+        "table": "documentType"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"jsonSchema\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "documentType",
+          "jsonSchema"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "drop column \"jsonSchema\"",
+        "sql": "ALTER TABLE \"public\".\"documentType\" DROP COLUMN \"jsonSchema\""
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"jsonSchema\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "documentType",
+          "jsonSchema"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.document.document_documentTypeVersionId_idx_0838791d",
+    "label": "Create index \"document_documentTypeVersionId_idx_0838791d\" on \"document\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "document_documentTypeVersionId_idx_0838791d",
+        "table": "document"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"document_documentTypeVersionId_idx_0838791d\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"document_documentTypeVersionId_idx_0838791d\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"document_documentTypeVersionId_idx_0838791d\"",
+        "sql": "CREATE INDEX \"document_documentTypeVersionId_idx_0838791d\" ON \"public\".\"document\" (\"documentTypeVersionId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"document_documentTypeVersionId_idx_0838791d\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"document_documentTypeVersionId_idx_0838791d\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.documentTypeVersion.documentTypeVersion_documentTypeId_idx_878907da",
+    "label": "Create index \"documentTypeVersion_documentTypeId_idx_878907da\" on \"documentTypeVersion\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "documentTypeVersion_documentTypeId_idx_878907da",
+        "table": "documentTypeVersion"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"documentTypeVersion_documentTypeId_idx_878907da\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"documentTypeVersion_documentTypeId_idx_878907da\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"documentTypeVersion_documentTypeId_idx_878907da\"",
+        "sql": "CREATE INDEX \"documentTypeVersion_documentTypeId_idx_878907da\" ON \"public\".\"documentTypeVersion\" (\"documentTypeId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"documentTypeVersion_documentTypeId_idx_878907da\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"documentTypeVersion_documentTypeId_idx_878907da\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.field.field_documentTypeVersionId_idx_0838791d",
+    "label": "Create index \"field_documentTypeVersionId_idx_0838791d\" on \"field\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "field_documentTypeVersionId_idx_0838791d",
+        "table": "field"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"field_documentTypeVersionId_idx_0838791d\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"field_documentTypeVersionId_idx_0838791d\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"field_documentTypeVersionId_idx_0838791d\"",
+        "sql": "CREATE INDEX \"field_documentTypeVersionId_idx_0838791d\" ON \"public\".\"field\" (\"documentTypeVersionId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"field_documentTypeVersionId_idx_0838791d\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"field_documentTypeVersionId_idx_0838791d\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.documentTypeVersion.documentTypeVersion_documentTypeId_fkey",
+    "label": "Add foreign key \"documentTypeVersion_documentTypeId_fkey\" on \"documentTypeVersion\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "documentTypeVersion_documentTypeId_fkey",
+        "table": "documentTypeVersion"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"documentTypeVersion_documentTypeId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "documentTypeVersion_documentTypeId_fkey",
+          "public",
+          "\"public\".\"documentTypeVersion\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"documentTypeVersion_documentTypeId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"documentTypeVersion\"\nADD CONSTRAINT \"documentTypeVersion_documentTypeId_fkey\"\nFOREIGN KEY (\"documentTypeId\")\nREFERENCES \"public\".\"documentType\" (\"id\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"documentTypeVersion_documentTypeId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "documentTypeVersion_documentTypeId_fkey",
+          "public",
+          "\"public\".\"documentTypeVersion\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.document.document_documentTypeVersionId_fkey",
+    "label": "Add foreign key \"document_documentTypeVersionId_fkey\" on \"document\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "document_documentTypeVersionId_fkey",
+        "table": "document"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"document_documentTypeVersionId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "document_documentTypeVersionId_fkey",
+          "public",
+          "\"public\".\"document\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"document_documentTypeVersionId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"document\"\nADD CONSTRAINT \"document_documentTypeVersionId_fkey\"\nFOREIGN KEY (\"documentTypeVersionId\")\nREFERENCES \"public\".\"documentTypeVersion\" (\"id\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"document_documentTypeVersionId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "document_documentTypeVersionId_fkey",
+          "public",
+          "\"public\".\"document\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.field.field_documentTypeVersionId_fkey",
+    "label": "Add foreign key \"field_documentTypeVersionId_fkey\" on \"field\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "field_documentTypeVersionId_fkey",
+        "table": "field"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"field_documentTypeVersionId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "field_documentTypeVersionId_fkey",
+          "public",
+          "\"public\".\"field\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"field_documentTypeVersionId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"field\"\nADD CONSTRAINT \"field_documentTypeVersionId_fkey\"\nFOREIGN KEY (\"documentTypeVersionId\")\nREFERENCES \"public\".\"documentTypeVersion\" (\"id\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"field_documentTypeVersionId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "field_documentTypeVersionId_fkey",
+          "public",
+          "\"public\".\"field\""
+        ]
+      }
+    ]
+  }
+]

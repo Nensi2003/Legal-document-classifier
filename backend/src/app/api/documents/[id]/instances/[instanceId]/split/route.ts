@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth";
 import { splitDocumentInstance } from "@/services/documentInstanceService";
 import { NextRequest, NextResponse } from "next/server";
+import { publishDocumentEvent } from "@/realtime/publisher";
 
 export const runtime = "nodejs";
 
@@ -54,6 +55,7 @@ export async function POST(
       user.id,
       splitPage
     );
+    publishDocumentEvent("DOCUMENT_UPDATED", documentId, user.id, { splitInstanceId: instanceIdNumber });
 
     return NextResponse.json({
       message: "Document instance split successfully",

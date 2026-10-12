@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
+import { getAccessibleDocumentById } from "@/services/documentAccessService";
 import {
   generateDocumentJSON,
   generateCombinedJSON,
@@ -38,13 +39,7 @@ export async function POST(
       );
     }
 
-    const document =
-      await db.orm.public.Document
-        .where({
-          id: documentId,
-          userId: user.id,
-        })
-        .first();
+    const document = await getAccessibleDocumentById(documentId, user.id);
 
     if (!document) {
       return Response.json(

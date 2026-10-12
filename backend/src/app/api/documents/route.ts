@@ -6,6 +6,9 @@ import path from "path";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/prisma/db";
 import { createDocument } from "@/services/documentService";
+import { getDocumentsAccessibleToUser } from "@/services/documentAccessService";
+import { publishAvailableEvent } from "@/realtime/publisher";
+import { importSharePointInboxDocuments } from "@/services/sharePointImportService";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -33,18 +36,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (user.role === "ADMIN") {
-  return NextResponse.json(
-    {
-      error: "Admins cannot upload documents",
-    },
-    { status: 403 }
-  );
-}
-
     // 2. Get uploaded file
     const formData = await request.formData();
     const file = formData.get("file");
+    const requestedTypeId = formData.get("documentTypeId");
 
     if (!(file instanceof File)) {
       return NextResponse.json(
@@ -110,12 +105,36 @@ export async function POST(request: NextRequest) {
       uniqueFileName
     );
 
-    // 11. Save document metadata
+    let documentTypeId: number | undefined;
+    let documentTypeVersionId: number | undefined;
+    if (requestedTypeId) {
+      documentTypeId = Number(requestedTypeId);
+      if (!Number.isInteger(documentTypeId) || documentTypeId <= 0) {
+        return NextResponse.json({ error: "Invalid document type ID" }, { status: 400 });
+      }
+      const activeVersion = await db.orm.public.DocumentTypeVersion
+        .where({ documentTypeId, status: "ACTIVE" }).first();
+      if (!activeVersion) {
+        return NextResponse.json({ error: "Document type has no active version" }, { status: 400 });
+      }
+      documentTypeVersionId = activeVersion.id;
+    }
+
+    // 11. Save document metadata, retaining the active template version if selected.
     const document = await createDocument({
       fileName: file.name,
       filePath: storedFilePath,
       mimeType: file.type,
       userId: user.id,
+      documentTypeId,
+      documentTypeVersionId,
+      status: "AVAILABLE",
+    });
+
+    publishAvailableEvent(document.id, user.id, {
+      fileName: document.fileName,
+      status: "AVAILABLE",
+      createdAt: document.createdAt,
     });
 
     return NextResponse.json(
@@ -157,10 +176,16 @@ export async function GET() {
       );
     }
 
-    // 2. Get documents belonging to the current user
-    const documents = await db.orm.public.Document
-      .where({ userId: user.id })
-      .all();
+    // Direct SharePoint uploads become normal AVAILABLE documents for all
+    // processing users. Keep the list usable if SharePoint is temporarily down.
+    try {
+      await importSharePointInboxDocuments();
+    } catch (sharePointError) {
+      console.error("SharePoint inbox sync failed:", sharePointError);
+    }
+
+    // All documents are visible to authenticated processing users.
+    const documents = await getDocumentsAccessibleToUser(user.id);
 
     // 3. Get document types
     const documentTypes =

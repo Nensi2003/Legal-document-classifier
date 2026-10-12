@@ -1,13 +1,12 @@
-import { readFile } from "fs/promises";
  import { NextRequest, NextResponse } from "next/server";
 import mammoth from "mammoth";
 import { parse } from "csv-parse/sync";
 import sanitizeHtml from "sanitize-html";
 
-import { getStoredFilePath } from "@/lib/fileStorage";
+import { readStoredFile, withStoredFilePath } from "@/lib/fileStorage";
 
 import { getCurrentUser } from "@/lib/auth";
-import { db } from "@/prisma/db";
+import { getAccessibleDocumentById } from "@/services/documentAccessService";
 
 import { withConvertedDocx } from "@/parsers/docConverter";
 
@@ -71,13 +70,7 @@ export async function GET(
      * another user's document.
      * ---------------------------------------------------------
      */
-    const document =
-      await db.orm.public.Document
-        .where({
-          id: documentId,
-          userId: user.id,
-        })
-        .first();
+    const document = await getAccessibleDocumentById(documentId, user.id);
 
     if (!document) {
       return NextResponse.json(
@@ -90,7 +83,7 @@ export async function GET(
       );
     }
 
-const filePath = getStoredFilePath(document.filePath);
+const fileBuffer = await readStoredFile(document.filePath);
     /*
      * ---------------------------------------------------------
      * DOCX
@@ -103,16 +96,12 @@ const filePath = getStoredFilePath(document.filePath);
 ) {
   const result =
     document.mimeType === "application/msword"
-      ? await withConvertedDocx(
-  filePath,
-  (docxPath) =>
-    mammoth.convertToHtml({
-      path: docxPath,
-    })
-)
-      : await mammoth.convertToHtml({
-          path: filePath,
-        });
+      ? await withStoredFilePath(
+          document.filePath,
+          (filePath) => withConvertedDocx(filePath, (docxPath) => mammoth.convertToHtml({ path: docxPath })),
+          document.fileName,
+        )
+      : await mammoth.convertToHtml({ buffer: fileBuffer });
 
   const html = sanitizeHtml(result.value, {
     allowedTags: [
@@ -154,9 +143,6 @@ const filePath = getStoredFilePath(document.filePath);
      * ---------------------------------------------------------
      */
     if (document.mimeType === "text/csv") {
-      const fileBuffer =
-        await readFile(filePath);
-
       const fileContent =
         fileBuffer.toString("utf-8");
 

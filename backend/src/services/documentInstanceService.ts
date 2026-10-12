@@ -1,22 +1,21 @@
 import { db } from "@/prisma/db";
 import { parseDocument } from "@/parsers/documentParser";
+import { getAccessibleDocumentById } from "@/services/documentAccessService";
+import { assertDocumentClaim } from "@/services/documentClaimService";
+import { readStoredFile } from "@/lib/fileStorage";
 
 async function getDocumentAndInstance(
   documentId: number,
   instanceId: number,
   userId: number
 ) {
-  const document =
-    await db.orm.public.Document
-      .where({
-        id: documentId,
-        userId,
-      })
-      .first();
+  const document = await getAccessibleDocumentById(documentId, userId);
 
   if (!document) {
     throw new Error("Document not found");
   }
+  const claim = await assertDocumentClaim(documentId, userId);
+  if (!claim.allowed) throw new Error(claim.error);
 
   if (document.status !== "REVIEW") {
   throw new Error(
@@ -49,7 +48,7 @@ async function getParsedPages(
     );
   }
 
-  const parsedDocument = await parseDocument(filePath, mimeType);
+  const parsedDocument = await parseDocument(await readStoredFile(filePath), mimeType);
 
   if (!parsedDocument.pages || parsedDocument.pages.length === 0) {
     throw new Error("Document does not contain page-level text");

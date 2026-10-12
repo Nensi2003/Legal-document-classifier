@@ -31,6 +31,8 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/legal_documents
       SOFFICE_PATH: /usr/bin/soffice
       JWT_SECRET: ${JWT_SECRET}
+       
+ 
 
     ports:
       - "3000:3000"
@@ -53,6 +55,10 @@ services:
 
     ports:
       - "5173:5173"
+
+    environment:
+      VITE_WS_URL: ${VITE_WS_URL:-}
+      VITE_SHAREPOINT_UPLOAD_URL: ${VITE_SHAREPOINT_UPLOAD_URL:-}
 
     volumes:
       - ./frontend:/app

@@ -1,12 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { uploadDocument } from "./api";
+import { getDocumentTypes, type DocumentType } from "../document-types/api";
 
 interface UploadDocumentProps {
+  isAdmin?: boolean;
+  onBackToDashboard?: () => void;
   onUploaded: (documentId: number) => void;
   onCancel: () => void;
 }
 
 export function UploadDocument({
+  isAdmin = false,
+  onBackToDashboard,
   onUploaded,
   onCancel,
 }: UploadDocumentProps) {
@@ -18,6 +23,14 @@ export function UploadDocument({
 
   const [error, setError] =
     useState("");
+  const [documentTypes, setDocumentTypes] = useState<DocumentType[]>([]);
+  const [documentTypeId, setDocumentTypeId] = useState("");
+
+  useEffect(() => {
+    void getDocumentTypes().then(setDocumentTypes).catch((loadError) => {
+      console.error("Failed to load document types for upload:", loadError);
+    });
+  }, []);
 
   function handleFileChange(
     event: React.ChangeEvent<HTMLInputElement>
@@ -40,7 +53,7 @@ export function UploadDocument({
       setError("");
 
       const document =
-        await uploadDocument(file);
+        await uploadDocument(file, documentTypeId ? Number(documentTypeId) : undefined);
 
       onUploaded(document.id);
     } catch (error) {
@@ -60,13 +73,23 @@ export function UploadDocument({
     <div className="mx-auto max-w-3xl">
       {/* Header */}
       <div className="mb-8">
+        {isAdmin && onBackToDashboard && (
+          <button
+            type="button"
+            onClick={onBackToDashboard}
+            className="mb-4 text-sm font-medium text-slate-600 hover:text-slate-900"
+          >
+            ← Back to Dashboard
+          </button>
+        )}
         <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-          Upload Document
+          {isAdmin ? "Publish Document" : "Upload Document"}
         </h1>
 
         <p className="mt-2 text-slate-500">
-          Upload a document to extract its content and
-          convert it into structured JSON.
+          {isAdmin
+            ? "Publish a document so ordinary users can review and process it."
+            : "Upload a document to extract its content and convert it into structured JSON."}
         </p>
       </div>
 
@@ -81,6 +104,24 @@ export function UploadDocument({
             Supported formats: PDF, Word, CSV, JPG and PNG.
           </p>
         </div>
+
+        <label className="mb-5 block space-y-2">
+          <span className="text-sm font-medium text-slate-700">Document type (optional)</span>
+          <select
+            value={documentTypeId}
+            onChange={(event) => setDocumentTypeId(event.target.value)}
+            disabled={uploading}
+            className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800"
+          >
+            <option value="">Choose after upload</option>
+            {documentTypes.filter((type) => type.activeVersion).map((type) => (
+              <option key={type.id} value={type.id}>
+                {type.name} · active v{type.activeVersion?.versionNumber}
+              </option>
+            ))}
+          </select>
+          <span className="block text-xs text-slate-500">Choosing a type pins the document to its currently active version.</span>
+        </label>
 
         {/* File picker */}
         <label
@@ -181,7 +222,7 @@ export function UploadDocument({
                 Uploading...
               </span>
             ) : (
-              "Upload Document"
+              isAdmin ? "Make Available to Users" : "Upload Document"
             )}
           </button>
         </div>
@@ -200,10 +241,9 @@ export function UploadDocument({
             </h3>
 
             <p className="mt-1 text-sm leading-6 text-slate-500">
-              Your document will be uploaded and its content
-              will be extracted. You can then select the
-              appropriate document type and complete the
-              structured information.
+              {isAdmin
+                ? "The document will appear in Available Documents for ordinary users to process."
+                : "Your document will be uploaded and its content will be extracted. You can then select the appropriate document type and complete the structured information."}
             </p>
           </div>
         </div>

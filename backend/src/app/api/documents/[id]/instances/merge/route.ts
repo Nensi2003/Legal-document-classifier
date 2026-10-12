@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth";
 import { mergeDocumentInstances } from "@/services/documentInstanceService";
 import { NextRequest, NextResponse } from "next/server";
+import { publishDocumentEvent } from "@/realtime/publisher";
 
 export const runtime = "nodejs";
 
@@ -54,6 +55,7 @@ export async function POST(
       secondInstanceId,
       user.id
     );
+    publishDocumentEvent("DOCUMENT_UPDATED", documentId, user.id, { mergedInstanceIds: [firstInstanceId, secondInstanceId] });
 
     return NextResponse.json({
       message: "Document instances merged successfully",
