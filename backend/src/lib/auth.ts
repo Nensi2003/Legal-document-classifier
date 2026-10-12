@@ -25,9 +25,7 @@ export async function setAuthCookie(user: {
     name: user.name,
     role: user.role,
   })
-    .setProtectedHeader({
-      alg: "HS256",
-    })
+    .setProtectedHeader({ alg: "HS256" })
     .setSubject(String(user.id))
     .setIssuedAt()
     .setExpirationTime(JWT_EXPIRES_IN)
@@ -46,15 +44,17 @@ export async function setAuthCookie(user: {
 
 export async function clearAuthCookie() {
   const cookieStore = await cookies();
-
   cookieStore.delete(AUTH_COOKIE);
 }
 
-/** Verify the same HTTP-only JWT used by REST requests, outside Next request context. */
 export async function verifyAuthToken(token: string) {
   try {
-    const { payload } = await jwtVerify(token, getJwtSecret(), { algorithms: ["HS256"] });
+    const { payload } = await jwtVerify(token, getJwtSecret(), {
+      algorithms: ["HS256"],
+    });
+
     if (!payload.sub) return null;
+
     return {
       id: Number(payload.sub),
       email: String(payload.email),
@@ -68,12 +68,9 @@ export async function verifyAuthToken(token: string) {
 
 export async function getCurrentUser() {
   const cookieStore = await cookies();
-
   const token = cookieStore.get(AUTH_COOKIE)?.value;
 
-  if (!token) {
-    return null;
-  }
+  if (!token) return null;
 
   return verifyAuthToken(token);
 }
@@ -82,21 +79,12 @@ export async function requireAdmin() {
   const user = await getCurrentUser();
 
   if (!user) {
-    return {
-      user: null,
-      error: "Not authenticated",
-    };
+    return { user: null, error: "Not authenticated" };
   }
 
   if (user.role !== "ADMIN") {
-    return {
-      user: null,
-      error: "Admin access required",
-    };
+    return { user: null, error: "Admin access required" };
   }
 
-  return {
-    user,
-    error: null,
-  };
+  return { user, error: null };
 }
