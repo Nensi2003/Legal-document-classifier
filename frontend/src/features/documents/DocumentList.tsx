@@ -17,6 +17,7 @@ interface DocumentListProps {
 }
 
 const DOCUMENTS_PER_PAGE = 10;
+const SHAREPOINT_UPLOAD_URL = import.meta.env.VITE_SHAREPOINT_UPLOAD_URL?.trim();
 
 function localDateKey(value: string): string {
   const date = new Date(value);
@@ -144,6 +145,18 @@ export function DocumentList({
       unsubscribe();
       if (refreshTimer) window.clearTimeout(refreshTimer);
     };
+  }, []);
+
+  // The backend imports newly uploaded SharePoint files when the list API is
+  // queried. Poll only when the SharePoint upload folder has been configured.
+  useEffect(() => {
+    if (!SHAREPOINT_UPLOAD_URL) return;
+    const interval = window.setInterval(() => {
+      void getDocuments().then(setDocuments).catch((loadError) => {
+        console.error("Failed to sync SharePoint uploads:", loadError);
+      });
+    }, 30_000);
+    return () => window.clearInterval(interval);
   }, []);
 
   /*
@@ -395,15 +408,19 @@ export function DocumentList({
           <p className="mt-2 text-sm text-slate-500">
             Browse documents uploaded by your team. Drafts stay available for anyone to continue.
           </p>
+          {SHAREPOINT_UPLOAD_URL && <p className="mt-1 text-xs text-slate-500">SharePoint uploads sync here within about 30 seconds. Supported files are limited to 10 MB and the same formats as app uploads.</p>}
         </div>
 
-        <div className="rounded-lg bg-slate-100 px-3 py-2">
-          <span className="text-sm font-medium text-slate-600">
+        <div className="flex flex-wrap items-center gap-3">
+          {SHAREPOINT_UPLOAD_URL && <a href={SHAREPOINT_UPLOAD_URL} target="_blank" rel="noreferrer" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Upload directly to SharePoint ↗</a>}
+          <div className="rounded-lg bg-slate-100 px-3 py-2">
+            <span className="text-sm font-medium text-slate-600">
             {documents.length}{" "}
             {documents.length === 1
               ? "document"
               : "documents"}
-          </span>
+            </span>
+          </div>
         </div>
       </div>
 
@@ -720,13 +737,19 @@ function DocumentCard({
   onOpen,
   onDelete,
 }: DocumentCardProps) {
+  const sharePointStored = document.filePath.startsWith("sharepoint:v1:");
   const currentlyWorking = Boolean(
     document.activeWorkerId != null &&
       document.claimExpiresAt &&
       new Date(document.claimExpiresAt).getTime() > Date.now(),
   );
+  const rowColor = document.status === "COMPLETED"
+    ? "bg-white hover:bg-slate-50"
+    : currentlyWorking
+      ? "bg-rose-50/60 hover:bg-rose-50"
+      : "bg-emerald-50/60 hover:bg-emerald-50";
   return (
-    <article className={`px-5 py-5 transition sm:px-6 ${currentlyWorking ? "bg-rose-50/60 hover:bg-rose-50" : "bg-emerald-50/60 hover:bg-emerald-50"}`}>
+    <article className={`px-5 py-5 transition sm:px-6 ${rowColor}`}>
 
       {/* Desktop */}
       <div className="hidden md:grid md:grid-cols-[minmax(0,2fr)_1fr_1fr_1fr_1fr_auto] md:items-center md:gap-4">
@@ -747,6 +770,7 @@ function DocumentCard({
             <p className="mt-0.5 text-xs text-slate-400">
               Document #{document.id}
             </p>
+            {sharePointStored && <p className="mt-1 text-xs text-slate-500">Stored in SharePoint</p>}
             {currentlyWorking && <p className="mt-1 text-xs font-semibold text-rose-700">Currently working: {document.activeWorkerName || "User"}</p>}
 
           </div>
@@ -792,7 +816,7 @@ function DocumentCard({
             Open
           </button>
 
-          {document.isUploadedByCurrentUser && document.uploaderRole !== "ADMIN" && (
+          {document.isUploadedByCurrentUser && document.uploaderRole !== "ADMIN" && !sharePointStored && (
             <button
               type="button"
               onClick={onDelete}
@@ -824,6 +848,7 @@ function DocumentCard({
             <p className="mt-1 text-xs text-slate-400">
               Document #{document.id}
             </p>
+            {sharePointStored && <p className="mt-1 text-xs text-slate-500">Stored in SharePoint</p>}
             <p className="mt-1 text-xs font-medium text-slate-500">Uploaded by: {document.uploaderRole === "ADMIN" ? "Admin" : document.uploaderName || "Unknown"}</p>
             {currentlyWorking && <p className="mt-1 text-xs font-semibold text-rose-700">Currently working: {document.activeWorkerName || "User"}</p>}
 
@@ -879,7 +904,7 @@ function DocumentCard({
             Open
           </button>
 
-          {document.isUploadedByCurrentUser && document.uploaderRole !== "ADMIN" && (
+          {document.isUploadedByCurrentUser && document.uploaderRole !== "ADMIN" && !sharePointStored && (
             <button
               type="button"
               onClick={onDelete}

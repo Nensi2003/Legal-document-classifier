@@ -22,13 +22,13 @@ describe("DocumentList status filter", () => {
     vi.clearAllMocks();
     getDocumentTypesMock.mockResolvedValue([]);
     getDocumentsMock.mockResolvedValue([
-      { id: 1, fileName: "available.pdf", status: "AVAILABLE", createdAt: "2026-01-01", mimeType: "application/pdf" },
-      { id: 2, fileName: "ready.pdf", status: "READY", createdAt: "2026-01-02", mimeType: "application/pdf" },
-      { id: 3, fileName: "failed.pdf", status: "FAILED", createdAt: "2026-01-03", mimeType: "application/pdf" },
-      { id: 4, fileName: "complete.pdf", status: "COMPLETED", createdAt: "2026-01-04", mimeType: "application/pdf", uploaderId: 7, uploaderName: "Morgan", uploaderRole: "USER" },
-      { id: 5, fileName: "working.pdf", status: "DRAFT", createdAt: "2026-01-05", mimeType: "application/pdf", activeWorkerId: 9, claimExpiresAt: "2030-01-01T00:00:00.000Z", activeWorkerName: "John Doe", uploaderId: 2, uploaderName: "Admin", uploaderRole: "ADMIN", isUploadedByCurrentUser: false, isClaimedByCurrentUser: false },
-      { id: 6, fileName: "released-draft.pdf", status: "DRAFT", createdAt: "2026-01-06", mimeType: "application/pdf", uploaderId: 2, uploaderName: "Admin", uploaderRole: "ADMIN", isUploadedByCurrentUser: false },
-      { id: 7, fileName: "my-upload.pdf", status: "DRAFT", createdAt: "2026-01-07", mimeType: "application/pdf", uploaderId: 4, uploaderName: "Me", uploaderRole: "USER", isUploadedByCurrentUser: true },
+      { id: 1, fileName: "available.pdf", filePath: "uploads/available.pdf", status: "AVAILABLE", createdAt: "2026-01-01", mimeType: "application/pdf" },
+      { id: 2, fileName: "ready.pdf", filePath: "uploads/ready.pdf", status: "READY", createdAt: "2026-01-02", mimeType: "application/pdf" },
+      { id: 3, fileName: "failed.pdf", filePath: "uploads/failed.pdf", status: "FAILED", createdAt: "2026-01-03", mimeType: "application/pdf" },
+      { id: 4, fileName: "complete.pdf", filePath: "uploads/complete.pdf", status: "COMPLETED", createdAt: "2026-01-04", mimeType: "application/pdf", activeWorkerId: 9, claimExpiresAt: "2030-01-01T00:00:00.000Z", uploaderId: 7, uploaderName: "Morgan", uploaderRole: "USER" },
+      { id: 5, fileName: "working.pdf", filePath: "uploads/working.pdf", status: "DRAFT", createdAt: "2026-01-05", mimeType: "application/pdf", activeWorkerId: 9, claimExpiresAt: "2030-01-01T00:00:00.000Z", activeWorkerName: "John Doe", uploaderId: 2, uploaderName: "Admin", uploaderRole: "ADMIN", isUploadedByCurrentUser: false, isClaimedByCurrentUser: false },
+      { id: 6, fileName: "released-draft.pdf", filePath: "uploads/released-draft.pdf", status: "DRAFT", createdAt: "2026-01-06", mimeType: "application/pdf", uploaderId: 2, uploaderName: "Admin", uploaderRole: "ADMIN", isUploadedByCurrentUser: false },
+      { id: 7, fileName: "my-upload.pdf", filePath: "uploads/my-upload.pdf", status: "DRAFT", createdAt: "2026-01-07", mimeType: "application/pdf", uploaderId: 4, uploaderName: "Me", uploaderRole: "USER", isUploadedByCurrentUser: true },
     ]);
   });
 
@@ -62,9 +62,13 @@ describe("DocumentList status filter", () => {
     render(<DocumentList onOpenDocument={vi.fn()} />);
     await screen.findAllByText("complete.pdf");
     const cards = screen.getAllByRole("article");
-    for (const filename of ["available.pdf", "ready.pdf", "failed.pdf", "complete.pdf", "released-draft.pdf", "my-upload.pdf"]) {
+    for (const filename of ["available.pdf", "ready.pdf", "failed.pdf", "released-draft.pdf", "my-upload.pdf"]) {
       expect(cards.find((card) => card.textContent?.includes(filename))?.className).toContain("bg-emerald-50");
     }
+    const completedCard = cards.find((card) => card.textContent?.includes("complete.pdf"));
+    expect(completedCard?.className).toContain("bg-white");
+    expect(completedCard?.className).not.toContain("bg-emerald-50");
+    expect(completedCard?.className).not.toContain("bg-rose-50");
     const workingCard = cards.find((card) => card.textContent?.includes("working.pdf"));
     expect(workingCard?.className).toContain("bg-rose-50");
     expect(workingCard).toHaveTextContent("Currently working: John Doe");
